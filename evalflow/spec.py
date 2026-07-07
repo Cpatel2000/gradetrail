@@ -148,6 +148,8 @@ class EvalSpec(_Frozen):
                 raise DatasetError(f"{path}:{lineno}: invalid JSON ({e.msg})") from None
             if not isinstance(row, dict):
                 raise DatasetError(f"{path}:{lineno}: each line must be a JSON object")
+            if self.dataset.id_field not in row:
+                row[self.dataset.id_field] = str(lineno)
             samples.append(row)
         if not samples:
             raise DatasetError(f"dataset.path: {path} contains no samples")

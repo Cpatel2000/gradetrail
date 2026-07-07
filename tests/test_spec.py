@@ -166,6 +166,72 @@ def test_exact_scorer_with_valid_target_field_passes_dataset_validation(spec_fil
     spec.validate_against_dataset()  # should not raise
 
 
+# --- dataset loading: sample ids ----------------------------------------------
+
+
+def test_missing_id_field_falls_back_to_original_line_number_despite_shuffle(
+    tmp_path: Path,
+) -> None:
+    dataset_path = tmp_path / "no_ids.jsonl"
+    rows = [{"question": f"q{i}"} for i in range(5)]  # no "id" field at all
+    dataset_path.write_text("\n".join(json.dumps(r) for r in rows))
+
+    spec_path = tmp_path / "eval.yaml"
+    spec_path.write_text(
+        f"""
+name: no-ids
+dataset:
+  path: {dataset_path}
+  shuffle_seed: 42
+prompt: |
+  {{{{ question }}}}
+model:
+  provider: anthropic
+  name: claude-sonnet-4-6
+scorer:
+  type: regex
+  pattern: 'x'
+"""
+    )
+    spec = load_spec(spec_path)
+    samples = spec.load_samples()
+
+    # shuffle_seed=42 must actually reorder the samples relative to the file,
+    # otherwise this test would pass trivially without exercising the bug.
+    assert [s["question"] for s in samples] != [f"q{i}" for i in range(5)]
+
+    # but each sample's fallback id must still reflect its ORIGINAL file line,
+    # not its position after the shuffle.
+    by_question = {s["question"]: s["id"] for s in samples}
+    assert by_question == {f"q{i}": str(i + 1) for i in range(5)}
+
+
+def test_present_id_field_is_never_overwritten(tmp_path: Path) -> None:
+    dataset_path = tmp_path / "with_ids.jsonl"
+    rows = [{"id": "custom-a", "question": "q0"}, {"id": "custom-b", "question": "q1"}]
+    dataset_path.write_text("\n".join(json.dumps(r) for r in rows))
+
+    spec_path = tmp_path / "eval.yaml"
+    spec_path.write_text(
+        f"""
+name: with-ids
+dataset:
+  path: {dataset_path}
+prompt: |
+  {{{{ question }}}}
+model:
+  provider: anthropic
+  name: claude-sonnet-4-6
+scorer:
+  type: regex
+  pattern: 'x'
+"""
+    )
+    spec = load_spec(spec_path)
+    samples = spec.load_samples()
+    assert [s["id"] for s in samples] == ["custom-a", "custom-b"]
+
+
 # --- identity ----------------------------------------------------------------
 
 
