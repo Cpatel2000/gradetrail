@@ -199,9 +199,7 @@ async def test_score_judge_binary_output_rejects_non_binary_score(tmp_path: Path
 
 async def test_score_judge_score_0_1_rejects_out_of_range_score(judge_path: Path) -> None:
     judge_file = load_judge_file(judge_path)
-    provider = FakeProvider(
-        ['{"score": 1.5, "reason": "bad"}', '{"score": 1.5, "reason": "bad"}']
-    )
+    provider = FakeProvider(['{"score": 1.5, "reason": "bad"}', '{"score": 1.5, "reason": "bad"}'])
     result = await score_judge(SAMPLE, "4", make_scorer(), judge_file, provider)
     assert result.state == "judge_error"
 

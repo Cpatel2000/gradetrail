@@ -98,9 +98,7 @@ async def test_complete_maps_message_to_provider_response() -> None:
 
 async def test_complete_sends_resolved_prompt_and_params() -> None:
     provider, client = make_provider([make_message()])
-    await provider.complete(
-        "2+2?", ModelParams(max_tokens=256, temperature=0.7, system="be terse")
-    )
+    await provider.complete("2+2?", ModelParams(max_tokens=256, temperature=0.7, system="be terse"))
     [call] = client.messages.calls
     assert call["model"] == MODEL
     assert call["max_tokens"] == 256

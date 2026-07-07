@@ -87,9 +87,7 @@ def _parse_reply(text: str, output: Literal["score_0_1", "binary"]) -> tuple[flo
             f"'score' must be 0 or 1 for output=binary, got {score!r}: {_truncate(text)!r}"
         )
     if output == "score_0_1" and not (0.0 <= score <= 1.0):
-        raise JudgeError(
-            f"'score' must be within [0, 1], got {score!r}: {_truncate(text)!r}"
-        )
+        raise JudgeError(f"'score' must be within [0, 1], got {score!r}: {_truncate(text)!r}")
     reason = data["reason"]
     if not isinstance(reason, str):
         raise JudgeError(f"'reason' must be a string, got {reason!r}: {_truncate(text)!r}")

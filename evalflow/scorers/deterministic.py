@@ -38,9 +38,7 @@ def score_exact(sample: dict, response_text: str, scorer: ExactScorer) -> ScoreR
     actual = _normalize(response_text, scorer.normalize)
     if actual == expected:
         return ScoreResult(score=1.0, state="scored", detail=f"matched {expected!r}")
-    return ScoreResult(
-        score=0.0, state="scored", detail=f"expected {expected!r}, got {actual!r}"
-    )
+    return ScoreResult(score=0.0, state="scored", detail=f"expected {expected!r}, got {actual!r}")
 
 
 def score_regex(sample: dict, response_text: str, scorer: RegexScorer) -> ScoreResult:

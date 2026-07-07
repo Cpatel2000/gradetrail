@@ -261,9 +261,7 @@ async def test_logs_structured_fields_on_retry_and_success() -> None:
 
 
 async def test_logs_fatal_error_outcome() -> None:
-    provider = make_provider(
-        FakeProvider, outcomes=[FakeError("bad request", retryable=False)]
-    )
+    provider = make_provider(FakeProvider, outcomes=[FakeError("bad request", retryable=False)])
     with structlog.testing.capture_logs() as logs, pytest.raises(ProviderError):
         await provider.complete("2+2?", PARAMS)
     assert len(logs) == 1
