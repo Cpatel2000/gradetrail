@@ -1,6 +1,7 @@
 # gradetrail
 
 [![CI](https://github.com/Cpatel2000/gradetrail/actions/workflows/ci.yml/badge.svg)](https://github.com/Cpatel2000/gradetrail/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/gradetrail)](https://pypi.org/project/gradetrail/)
 
 A distributed LLM evaluation harness that treats evals like tests: declarative, cached, reproducible.
 
@@ -11,7 +12,7 @@ A distributed LLM evaluation harness that treats evals like tests: declarative, 
 ## Quickstart
 
 ```bash
-pip install gradetrail  # pending; for now: pip install git+https://github.com/Cpatel2000/gradetrail
+pip install gradetrail  
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
