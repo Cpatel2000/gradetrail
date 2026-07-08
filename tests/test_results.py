@@ -22,6 +22,7 @@ PRICED_MODEL = ModelSpec(provider="anthropic", name="claude-sonnet-4-6")
 UNKNOWN_MODEL = ModelSpec(provider="anthropic", name="claude-nonexistent-model-xyz")
 JUDGE_MODEL = ModelSpec(provider="anthropic", name="claude-haiku-4-5")
 UNKNOWN_JUDGE_MODEL = ModelSpec(provider="anthropic", name="claude-nonexistent-judge-xyz")
+GPT_4O_MINI_MODEL = ModelSpec(provider="openai", name="gpt-4o-mini")
 
 
 def make_scored(
@@ -273,6 +274,48 @@ def test_summarize_unknown_model_gives_none_cost_never_a_crash() -> None:
     results = [make_scored("1", 1.0, input_tokens=1_000_000, output_tokens=1_000_000)]
     summary = summarize(results, UNKNOWN_MODEL, wall_time_s=1.0)
     assert summary.total_cost_usd is None
+
+
+# --- summarize: gpt-4o-mini pricing (previously missing entirely) ----------------
+
+
+def test_gpt_4o_mini_is_priced() -> None:
+    # Root cause of the "Cost: unknown" bug on two real gpt-4o-mini runs
+    # (951 in / 2775 out tokens, reported unknown): PRICING simply had no
+    # ("openai", "gpt-4o-mini") entry at all -- confirmed by reading
+    # summarize()'s lookup key, which is the requested spec.model.name, not
+    # the API-reported served_model, so this was never a lookup-key mismatch.
+    # $0.15/$0.60 per million tokens, unchanged since the 2024-07 launch.
+    assert PRICING[("openai", "gpt-4o-mini")] == (Decimal("0.15"), Decimal("0.60"))
+
+
+def test_summarize_partial_success_run_on_gpt_4o_mini_produces_real_cost() -> None:
+    # The real bug scenario: a run with a mix of scored and provider_error
+    # samples on a now-priced model must produce an actual dollar figure, not
+    # "unknown" -- provider_error samples contribute zero tokens (None ->
+    # 0), scored samples bill normally.
+    results = [
+        make_scored("1", 1.0, input_tokens=600_000, output_tokens=1_800_000),
+        make_scored("2", 1.0, input_tokens=351_000, output_tokens=975_000),
+        make_error("3", "provider_error"),
+    ]
+    summary = summarize(results, GPT_4O_MINI_MODEL, wall_time_s=1.0)
+    # total input = 951_000 -> 0.951M * $0.15 = $0.14265
+    # total output = 2_775_000 -> 2.775M * $0.60 = $1.665
+    # total                                     = $1.80765
+    assert summary.total_cost_usd == Decimal("1.80765")
+    assert isinstance(summary.total_cost_usd, Decimal)
+    assert summary.cost_unpriced_models == ()
+
+
+def test_summarize_still_none_for_a_genuinely_unpriced_model() -> None:
+    # Regression guard: adding gpt-4o-mini must not make the strict-None
+    # behavior (Fix 2) disappear for models that are still genuinely absent
+    # from PRICING.
+    results = [make_scored("1", 1.0, input_tokens=1_000_000, output_tokens=1_000_000)]
+    summary = summarize(results, UNKNOWN_MODEL, wall_time_s=1.0)
+    assert summary.total_cost_usd is None
+    assert any("claude-nonexistent-model-xyz" in m for m in summary.cost_unpriced_models)
 
 
 def test_summarize_empty_results_list() -> None:

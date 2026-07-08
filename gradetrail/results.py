@@ -29,6 +29,8 @@ PRICING: dict[tuple[str, str], tuple[Decimal, Decimal]] = {
     ("openai", "gpt-5.1"): (Decimal("2.50"), Decimal("10.00")),
     ("openai", "gpt-5.1-mini"): (Decimal("0.40"), Decimal("1.60")),
     ("openai", "gpt-5.1-nano"): (Decimal("0.10"), Decimal("0.40")),
+    # Unchanged since its 2024-07 launch as of July 2026.
+    ("openai", "gpt-4o-mini"): (Decimal("0.15"), Decimal("0.60")),
 }
 
 
