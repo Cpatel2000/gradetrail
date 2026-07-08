@@ -166,6 +166,132 @@ def test_exact_scorer_with_valid_target_field_passes_dataset_validation(spec_fil
     spec.validate_against_dataset()  # should not raise
 
 
+# --- judge scorer: template strictness ----------------------------------------
+
+VALID_JUDGE_YAML = """\
+version: 1
+output: score_0_1
+prompt: |
+  Question: {{ question }}
+  Reference: {{ answer }}
+  Response: {{ response }}
+
+  Reply with only JSON: {"score": 0 or 1, "reason": "<one sentence>"}
+"""
+
+_JUDGE_SCORER_BLOCK = "scorer:\n  type: regex\n  pattern: 'Answer:\\s*{{ answer }}\\s*$'"
+
+
+def _with_judge_scorer(spec_text: str, judge_prompt_path: str) -> str:
+    return spec_text.replace(
+        _JUDGE_SCORER_BLOCK,
+        f"scorer:\n  type: judge\n  judge_prompt: {judge_prompt_path}\n  model:\n"
+        "    provider: anthropic\n    name: claude-sonnet-4-6\n",
+    )
+
+
+@pytest.fixture()
+def judge_file_path(tmp_path: Path) -> Path:
+    path = tmp_path / "judge.yaml"
+    path.write_text(VALID_JUDGE_YAML)
+    return path
+
+
+@pytest.fixture()
+def judge_spec_file(tmp_path: Path, dataset: Path, judge_file_path: Path) -> Path:
+    path = tmp_path / "eval.yaml"
+    text = _with_judge_scorer(MINIMAL_YAML.format(dataset_path=dataset), str(judge_file_path))
+    path.write_text(text)
+    return path
+
+
+def test_judge_prompt_response_placeholder_is_supplied_and_does_not_raise(
+    tmp_path: Path, dataset: Path
+) -> None:
+    """{{ response }} is the one field validate_against_dataset() must inject itself:
+    no real response exists yet at validation time, but every judge file references
+    it (it's what's being graded). If the placeholder wiring is wrong, every judge
+    scorer spec -- not just a buggy one -- would falsely fail validation."""
+    judge_path = tmp_path / "judge.yaml"
+    judge_path.write_text(
+        "version: 1\noutput: score_0_1\nprompt: |\n  Q: {{ question }}\n  A: {{ response }}\n"
+    )
+    spec_path = tmp_path / "eval.yaml"
+    spec_text = _with_judge_scorer(MINIMAL_YAML.format(dataset_path=dataset), str(judge_path))
+    spec_path.write_text(spec_text)
+    spec = load_spec(spec_path)
+    spec.validate_against_dataset()  # should not raise
+
+
+def test_judge_scorer_with_valid_judge_file_passes_dataset_validation(
+    judge_spec_file: Path,
+) -> None:
+    spec = load_spec(judge_spec_file)
+    spec.validate_against_dataset()  # should not raise
+
+
+def test_judge_prompt_missing_sample_field_fails_fast(
+    tmp_path: Path, dataset: Path, judge_file_path: Path
+) -> None:
+    judge_file_path.write_text(VALID_JUDGE_YAML.replace("{{ answer }}", "{{ nonexistent_field }}"))
+    spec_path = tmp_path / "eval.yaml"
+    spec_text = _with_judge_scorer(MINIMAL_YAML.format(dataset_path=dataset), str(judge_file_path))
+    spec_path.write_text(spec_text)
+    spec = load_spec(spec_path)
+    with pytest.raises(DatasetError, match="nonexistent_field"):
+        spec.validate_against_dataset()
+
+
+def test_judge_prompt_file_missing_fails_with_resolved_path(tmp_path: Path, dataset: Path) -> None:
+    missing_path = tmp_path / "no_such_judge.yaml"
+    spec_path = tmp_path / "eval.yaml"
+    spec_text = _with_judge_scorer(MINIMAL_YAML.format(dataset_path=dataset), str(missing_path))
+    spec_path.write_text(spec_text)
+    spec = load_spec(spec_path)
+    with pytest.raises(DatasetError, match="does not exist") as exc_info:
+        spec.validate_against_dataset()
+    assert str(missing_path) in str(exc_info.value)
+
+
+def test_judge_prompt_file_invalid_schema_fails_at_validation(
+    tmp_path: Path, dataset: Path, judge_file_path: Path
+) -> None:
+    judge_file_path.write_text(VALID_JUDGE_YAML.replace("output: score_0_1", "output: percent"))
+    spec_path = tmp_path / "eval.yaml"
+    spec_text = _with_judge_scorer(MINIMAL_YAML.format(dataset_path=dataset), str(judge_file_path))
+    spec_path.write_text(spec_text)
+    spec = load_spec(spec_path)
+    with pytest.raises(DatasetError) as exc_info:
+        spec.validate_against_dataset()
+    # the re-wrap must carry the pydantic reason forward, not degrade into a
+    # generic "judge file invalid" -- both the field and why it's wrong.
+    assert "output" in str(exc_info.value)
+    assert "score_0_1" in str(exc_info.value) or "binary" in str(exc_info.value)
+
+
+def test_judge_prompt_relative_path_resolves_against_spec_base_dir(
+    tmp_path: Path, dataset: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    judges_dir = tmp_path / "judges"
+    judges_dir.mkdir()
+    (judges_dir / "correctness.yaml").write_text(VALID_JUDGE_YAML)
+
+    spec_path = tmp_path / "eval.yaml"  # spec lives alongside judges/, base_dir == tmp_path
+    spec_path.write_text(
+        _with_judge_scorer(MINIMAL_YAML.format(dataset_path=dataset), "judges/correctness.yaml")
+    )
+    spec = load_spec(spec_path)
+
+    # Give this test teeth: chdir somewhere that does NOT contain judges/, so a
+    # CWD-based (rather than base_dir-based) resolution would raise "does not
+    # exist" here instead of silently passing by accident.
+    unrelated_cwd = tmp_path / "unrelated_cwd"
+    unrelated_cwd.mkdir()
+    monkeypatch.chdir(unrelated_cwd)
+
+    spec.validate_against_dataset()  # should not raise, even though CWD != tmp_path
+
+
 # --- dataset loading: sample ids ----------------------------------------------
 
 

@@ -17,10 +17,17 @@ import jinja2
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
-from gradetrail.errors import DatasetError, SpecError
+from gradetrail.errors import DatasetError, JudgeError, SpecError
 
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _JINJA_ENV = jinja2.Environment(undefined=jinja2.StrictUndefined)
+_JUDGE_RESPONSE_PROBE = "PROBE"
+
+
+def _resolve_path(base_dir: Path, path: str) -> Path:
+    """Resolve a spec-relative path (dataset, judge file) against base_dir."""
+    p = Path(path)
+    return p if p.is_absolute() else base_dir / p
 
 
 class _Frozen(BaseModel):
@@ -165,6 +172,9 @@ class EvalSpec(_Frozen):
         """Fail fast: render templates against sample 0 with strict undefined.
 
         Raises DatasetError naming the missing field, per design doc rule 3.
+        For a judge scorer, this also loads and validates the judge file
+        itself and renders its own prompt template against sample 0 (rule
+        3's judge-file extension).
         """
         sample = self.load_samples()[0]
         templates = {"prompt": self.prompt}
@@ -182,6 +192,34 @@ class EvalSpec(_Frozen):
                 f"scorer.target_field: {self.scorer.target_field!r} is undefined "
                 f"(sample fields: {sorted(sample)})"
             )
+        if isinstance(self.scorer, JudgeScorer):
+            self._validate_judge_prompt(sample)
+
+    def _validate_judge_prompt(self, sample: dict) -> None:
+        # Deferred import: gradetrail.scorers.judge imports JudgeScorer from
+        # this module at its top level, so importing load_judge_file up at
+        # this module's top level would be a circular import. Importing here,
+        # inside the function body, defers it until this method actually
+        # runs -- by then both modules have already finished importing. Do
+        # not "tidy" this back up to the top of the file; that reintroduces
+        # the cycle. spec.py now has a runtime (not import-time) dependency
+        # on scorers.judge -- see NOTES.md.
+        from gradetrail.scorers.judge import load_judge_file
+
+        assert isinstance(self.scorer, JudgeScorer)
+        judge_path = _resolve_path(self.base_dir, self.scorer.judge_prompt)
+        try:
+            judge_file = load_judge_file(judge_path)
+        except JudgeError as e:
+            raise DatasetError(f"scorer.judge_prompt: {e}") from e
+        try:
+            _JINJA_ENV.from_string(judge_file.prompt).render(
+                **sample, response=_JUDGE_RESPONSE_PROBE
+            )
+        except jinja2.UndefinedError as e:
+            raise DatasetError(
+                f"scorer.judge_prompt: {e.message} (sample fields: {sorted(sample)})"
+            ) from None
 
 
 def load_spec(path: str | Path) -> EvalSpec:
@@ -222,9 +260,7 @@ def compute_identity(spec: EvalSpec) -> str:
     dataset_hash = hashlib.sha256(spec.dataset_path().read_bytes()).hexdigest()
     parts: dict[str, object] = {"spec": payload, "dataset_sha256": dataset_hash}
     if isinstance(spec.scorer, JudgeScorer):
-        judge_path = Path(spec.scorer.judge_prompt)
-        if not judge_path.is_absolute():
-            judge_path = spec.base_dir / judge_path
+        judge_path = _resolve_path(spec.base_dir, spec.scorer.judge_prompt)
         if not judge_path.exists():
             raise SpecError(f"scorer.judge_prompt: {judge_path} does not exist")
         parts["judge_sha256"] = hashlib.sha256(judge_path.read_bytes()).hexdigest()
