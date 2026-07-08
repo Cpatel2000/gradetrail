@@ -133,6 +133,15 @@ class RayRunner(Runner):
         if isinstance(spec.scorer, JudgeScorer):
             judge_file = load_judge_file(_resolve_path(spec.base_dir, spec.scorer.judge_prompt))
 
+        # Pre-warm: open and close the cache once here, before any worker
+        # connects. ResponseCache.connect() already retries the WAL-switch
+        # race on its own (that's the correctness guarantee), but a
+        # pre-warmed file means workers connect to a database already in WAL
+        # mode, so that retry path is a safety net that almost never fires
+        # rather than a hot path under n_workers-way contention.
+        async with ResponseCache(self._cache_path):
+            pass
+
         batches = _shard_samples(samples, self._n_workers)
         remote_run_batch = ray.remote(_run_batch_sync)
         object_refs = [
