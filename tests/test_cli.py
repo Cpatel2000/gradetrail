@@ -234,18 +234,107 @@ def test_run_aborted_run_exits_1_with_prominent_line(
     assert (output_dir / "manifest.json").exists()
 
 
-def test_run_non_aborted_run_with_provider_errors_still_exits_0(
-    spec_file: Path, tmp_path: Path
+# --- exit-code contract: 0 iff at least one sample scored, else 1 ---------------------
+
+
+def _error_result(sample_id: str) -> SampleResult:
+    return SampleResult(
+        sample_id=sample_id,
+        state="provider_error",
+        score=None,
+        response_text=None,
+        input_tokens=None,
+        output_tokens=None,
+        latency_ms=None,
+        cached=False,
+        detail="fake provider: simulated failure",
+    )
+
+
+def _stub_runner(results: list[SampleResult], summary: RunSummary) -> type:
+    class _Stub:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        async def run(self, spec: object) -> tuple[list[SampleResult], RunSummary]:
+            return results, summary
+
+    return _Stub
+
+
+def test_run_all_provider_error_exits_1(
+    spec_file: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # aborted_reason defaults to None -- a run that ran to completion, no
-    # matter how many samples failed along the way, must not trip the abort
-    # exit code. (FAKE_SUMMARY/FAKE_RESULTS describe an all-scored run, but
-    # the point here is specifically that aborted_reason, not failure count,
-    # is what drives the exit code.)
+    # The release-testing hazard: a totally-broken run (e.g. expired API key
+    # in CI) where every sample fails must NOT report success. No abort here
+    # -- the run ran to completion, it just scored nothing.
+    results = [_error_result("1"), _error_result("2"), _error_result("3")]
+    summary = dataclasses.replace(
+        FAKE_SUMMARY, n_samples=3, n_scored=0, n_provider_error=3, mean_score=None
+    )
+    monkeypatch.setattr(cli_module, "LocalRunner", _stub_runner(results, summary))
     output_dir = tmp_path / "out"
     result = runner.invoke(cli_module.app, ["run", str(spec_file), "--output-dir", str(output_dir)])
+
+    assert result.exit_code == 1
+    assert "ABORTED" not in result.output  # not an abort -- a zero-scored completed run
+    # results/manifest still written: a zero-scored run is a real, inspectable
+    # outcome, not a spec/dataset error that exits before writing anything.
+    assert (output_dir / "results.jsonl").exists()
+    assert (output_dir / "manifest.json").exists()
+
+
+def test_run_partial_success_with_provider_errors_exits_0(
+    spec_file: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Partial success is success: at least one sample scored, so exit 0 even
+    # though some samples failed.
+    results = [FAKE_RESULTS[0], _error_result("2"), _error_result("3")]
+    summary = dataclasses.replace(
+        FAKE_SUMMARY, n_samples=3, n_scored=1, n_provider_error=2, mean_score=1.0
+    )
+    monkeypatch.setattr(cli_module, "LocalRunner", _stub_runner(results, summary))
+    output_dir = tmp_path / "out"
+    result = runner.invoke(cli_module.app, ["run", str(spec_file), "--output-dir", str(output_dir)])
+
     assert result.exit_code == 0
     assert "ABORTED" not in result.output
+
+
+def test_run_fully_scored_exits_0(
+    spec_file: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The default stub already returns an all-scored run; assert the contract
+    # explicitly rather than leaning on the generic green-path tests.
+    monkeypatch.setattr(cli_module, "LocalRunner", _stub_runner(FAKE_RESULTS, FAKE_SUMMARY))
+    output_dir = tmp_path / "out"
+    result = runner.invoke(cli_module.app, ["run", str(spec_file), "--output-dir", str(output_dir)])
+
+    assert result.exit_code == 0
+
+
+def test_run_aborted_run_exits_1_even_if_it_had_no_scored_samples(
+    spec_file: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # An aborted run already has n_scored == 0, so the two conditions overlap.
+    # This pins that the abort path still exits 1 and still prints its
+    # prominent ABORTED line (the message isn't lost by collapsing the two
+    # exit conditions into one check).
+    results = [_error_result("1")]
+    summary = dataclasses.replace(
+        FAKE_SUMMARY,
+        n_samples=1,
+        n_scored=0,
+        n_provider_error=1,
+        mean_score=None,
+        aborted_reason="fake provider: simulated identical fatal failure",
+    )
+    monkeypatch.setattr(cli_module, "LocalRunner", _stub_runner(results, summary))
+    output_dir = tmp_path / "out"
+    result = runner.invoke(cli_module.app, ["run", str(spec_file), "--output-dir", str(output_dir)])
+
+    assert result.exit_code == 1
+    assert "ABORTED" in result.output
 
 
 def test_run_default_output_dir_uses_name_and_identity_hash(

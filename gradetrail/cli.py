@@ -94,7 +94,12 @@ def run(
 
     _print_summary(summary)
 
-    if summary.aborted_reason is not None:
+    # Exit 1 when nothing scored -- an all-failed run (e.g. an expired API key
+    # in CI) must not report success. An aborted run always has n_scored == 0,
+    # so this single check subsumes the abort case; the ABORTED line above is
+    # what distinguishes the two for a human. Exit 0 iff at least one sample
+    # scored (partial success is success).
+    if summary.aborted_reason is not None or summary.n_scored == 0:
         raise typer.Exit(code=1)
 
 

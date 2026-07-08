@@ -65,6 +65,8 @@ Run it again and it completes in about 40ms at $0.00: every response is cached, 
 
 More specs, covering all three scorer types (`exact`, `regex`, `judge`) and a cross-provider comparison pair, are in [examples/](examples/).
 
+**Exit codes**: `gradetrail run` exits `0` when at least one sample scored, and `1` when zero samples scored or the run aborted early — so a fully-broken run (e.g. an expired API key) fails CI instead of reporting success.
+
 ## Why
 
 - **Cached**: responses are keyed on (provider, model, base_url, resolved prompt, params); re-runs are free, and a prompt edit invalidates only the affected samples.
