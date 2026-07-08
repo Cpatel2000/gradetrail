@@ -5,6 +5,30 @@ description = "A distributed LLM evaluation harness: declarative, cached, reprod
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
+authors = [
+    { name = "Chitvan Patel" },
+]
+keywords = [
+    "llm",
+    "evaluation",
+    "benchmarking",
+    "testing",
+    "anthropic",
+    "openai",
+    "ray",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Testing",
+]
 dependencies = [
     "pydantic>=2.5",
     "pyyaml>=6.0",
@@ -16,11 +40,17 @@ dependencies = [
     "typer>=0.12",
 ]
 
+[project.urls]
+Repository = "https://github.com/Cpatel2000/evalflow"
+Issues = "https://github.com/Cpatel2000/evalflow/issues"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "ruff~=0.15.20",
+    "build>=1.2",
+    "twine>=5.0",
 ]
 ray = [
     "ray>=2.9",
