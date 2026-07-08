@@ -20,6 +20,8 @@ from gradetrail.spec import ModelSpec
 
 PRICED_MODEL = ModelSpec(provider="anthropic", name="claude-sonnet-4-6")
 UNKNOWN_MODEL = ModelSpec(provider="anthropic", name="claude-nonexistent-model-xyz")
+JUDGE_MODEL = ModelSpec(provider="anthropic", name="claude-haiku-4-5")
+UNKNOWN_JUDGE_MODEL = ModelSpec(provider="anthropic", name="claude-nonexistent-judge-xyz")
 
 
 def make_scored(
@@ -30,6 +32,8 @@ def make_scored(
     output_tokens: int = 50,
     cached: bool = False,
     served_model: str | None = "fake-model",
+    judge_input_tokens: int | None = None,
+    judge_output_tokens: int | None = None,
 ) -> SampleResult:
     return SampleResult(
         sample_id=sample_id,
@@ -42,6 +46,8 @@ def make_scored(
         cached=cached,
         detail="matched 'x'",
         served_model=served_model,
+        judge_input_tokens=judge_input_tokens,
+        judge_output_tokens=judge_output_tokens,
     )
 
 
@@ -274,6 +280,165 @@ def test_summarize_empty_results_list() -> None:
     assert summary.n_samples == 0
     assert summary.mean_score is None
     assert summary.total_cost_usd == Decimal("0")
+
+
+# --- summarize: judge tokens and cost --------------------------------------------
+
+
+def test_sample_result_judge_token_fields_default_to_none() -> None:
+    result = make_scored("1", 1.0)
+    assert result.judge_input_tokens is None
+    assert result.judge_output_tokens is None
+
+
+def test_run_summary_judge_fields_default_appropriately() -> None:
+    summary = RunSummary(
+        n_samples=1,
+        n_scored=1,
+        n_provider_error=0,
+        n_judge_error=0,
+        mean_score=1.0,
+        total_input_tokens=10,
+        total_output_tokens=5,
+        total_cost_usd=Decimal("0.01"),
+        wall_time_s=1.0,
+        cache_hits=0,
+    )
+    assert summary.total_judge_input_tokens == 0
+    assert summary.total_judge_output_tokens == 0
+    assert summary.cost_unpriced_models == ()
+
+
+def test_summarize_judge_tokens_totaled_separately_from_primary_tokens() -> None:
+    results = [
+        make_scored(
+            "1",
+            1.0,
+            input_tokens=100,
+            output_tokens=50,
+            judge_input_tokens=200,
+            judge_output_tokens=80,
+        ),
+        make_scored(
+            "2",
+            1.0,
+            input_tokens=150,
+            output_tokens=60,
+            judge_input_tokens=300,
+            judge_output_tokens=120,
+        ),
+    ]
+    summary = summarize(results, PRICED_MODEL, wall_time_s=1.0, judge_model=PRICED_MODEL)
+    # primary and judge totals must not bleed into each other
+    assert summary.total_input_tokens == 250
+    assert summary.total_output_tokens == 110
+    assert summary.total_judge_input_tokens == 500
+    assert summary.total_judge_output_tokens == 200
+
+
+def test_summarize_non_judge_eval_has_zero_judge_totals() -> None:
+    results = [make_scored("1", 1.0)]
+    summary = summarize(results, PRICED_MODEL, wall_time_s=1.0)  # no judge_model
+    assert summary.total_judge_input_tokens == 0
+    assert summary.total_judge_output_tokens == 0
+
+
+def test_summarize_judge_cost_added_to_primary_cost_when_both_priced() -> None:
+    primary_input, primary_output = PRICING[("anthropic", "claude-sonnet-4-6")]
+    judge_input, judge_output = PRICING[("anthropic", "claude-haiku-4-5")]
+    assert (primary_input, primary_output) == (Decimal("3.00"), Decimal("15.00"))
+    assert (judge_input, judge_output) == (Decimal("0.25"), Decimal("1.25"))
+
+    results = [
+        make_scored(
+            "1",
+            1.0,
+            input_tokens=1_000_000,
+            output_tokens=1_000_000,
+            judge_input_tokens=1_000_000,
+            judge_output_tokens=1_000_000,
+        ),
+    ]
+    summary = summarize(results, PRICED_MODEL, wall_time_s=1.0, judge_model=JUDGE_MODEL)
+    # primary: 1M*$3.00 + 1M*$15.00 = $18.00; judge: 1M*$0.25 + 1M*$1.25 = $1.50
+    assert summary.total_cost_usd == Decimal("19.50")
+
+
+def test_summarize_judge_cost_billed_even_when_primary_response_is_cached() -> None:
+    # Judge calls are never cached (see NOTES.md) -- a cache hit on the
+    # primary response must not zero out judge cost the way it zeroes out
+    # primary cost.
+    results = [
+        make_scored(
+            "1",
+            1.0,
+            input_tokens=1_000_000,
+            output_tokens=1_000_000,
+            cached=True,
+            judge_input_tokens=1_000_000,
+            judge_output_tokens=1_000_000,
+        ),
+    ]
+    summary = summarize(results, PRICED_MODEL, wall_time_s=1.0, judge_model=JUDGE_MODEL)
+    assert summary.cache_hits == 1
+    assert summary.total_cost_usd == Decimal("1.50")  # primary cost is $0 (cached); judge is not
+
+
+def test_summarize_cost_none_when_primary_model_unpriced_names_it() -> None:
+    results = [make_scored("1", 1.0, input_tokens=1_000_000, output_tokens=1_000_000)]
+    summary = summarize(results, UNKNOWN_MODEL, wall_time_s=1.0)
+    assert summary.total_cost_usd is None
+    assert any(
+        "primary" in m and "claude-nonexistent-model-xyz" in m for m in summary.cost_unpriced_models
+    )
+
+
+def test_summarize_cost_none_when_judge_model_unpriced_even_though_primary_is_priced() -> None:
+    results = [
+        make_scored(
+            "1",
+            1.0,
+            input_tokens=1_000_000,
+            output_tokens=1_000_000,
+            judge_input_tokens=1_000_000,
+            judge_output_tokens=1_000_000,
+        ),
+    ]
+    summary = summarize(results, PRICED_MODEL, wall_time_s=1.0, judge_model=UNKNOWN_JUDGE_MODEL)
+    assert summary.total_cost_usd is None  # strict: an unpriced judge model taints the whole total
+    assert any(
+        "judge" in m and "claude-nonexistent-judge-xyz" in m for m in summary.cost_unpriced_models
+    )
+
+
+def test_summarize_cost_none_names_both_when_primary_and_judge_unpriced() -> None:
+    results = [make_scored("1", 1.0)]
+    summary = summarize(results, UNKNOWN_MODEL, wall_time_s=1.0, judge_model=UNKNOWN_JUDGE_MODEL)
+    assert summary.total_cost_usd is None
+    assert len(summary.cost_unpriced_models) == 2
+
+
+# --- round trip: judge token fields ------------------------------------------------
+
+
+def test_round_trip_preserves_judge_token_fields(tmp_path: Path) -> None:
+    result = make_scored("1", 1.0, judge_input_tokens=2750, judge_output_tokens=800)
+    path = tmp_path / "results.jsonl"
+    write_jsonl([result], path)
+    [round_tripped] = read_jsonl(path)
+    assert round_tripped == result
+    assert round_tripped.judge_input_tokens == 2750
+    assert round_tripped.judge_output_tokens == 800
+
+
+def test_round_trip_preserves_none_judge_fields_on_non_judge_result(tmp_path: Path) -> None:
+    result = make_scored("1", 1.0)  # judge_input_tokens/judge_output_tokens default None
+    assert result.judge_input_tokens is None
+    path = tmp_path / "results.jsonl"
+    write_jsonl([result], path)
+    [round_tripped] = read_jsonl(path)
+    assert round_tripped.judge_input_tokens is None
+    assert round_tripped.judge_output_tokens is None
 
 
 # --- write_jsonl / read_jsonl ----------------------------------------------------

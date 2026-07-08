@@ -46,6 +46,10 @@ class SampleResult:
     cached: bool
     detail: str | None  # error detail or scorer detail
     served_model: str | None = None  # API-reported model; None on error states
+    # Only set for a judge scorer (None otherwise). Judge calls are never
+    # cached, so these are real, always-billed tokens -- see summarize().
+    judge_input_tokens: int | None = None
+    judge_output_tokens: int | None = None
 
 
 @dataclass(frozen=True)
@@ -62,11 +66,44 @@ class RunSummary:
     total_cost_usd: Decimal | None  # None if (provider, model) has no pricing entry
     wall_time_s: float
     cache_hits: int
+    total_judge_input_tokens: int = 0
+    total_judge_output_tokens: int = 0
+    # Human-readable "<role> model <provider>/<name>" entries for every model
+    # that made total_cost_usd None. Empty whenever total_cost_usd is a
+    # Decimal. Lets a summary say *why* cost is unknown instead of just that
+    # it is -- see cli.py's _print_summary.
+    cost_unpriced_models: tuple[str, ...] = ()
 
 
-def summarize(results: list[SampleResult], model: ModelSpec, wall_time_s: float) -> RunSummary:
-    """Reduce results to a RunSummary. Raises ResultsError on an unrecognized state."""
-    prices = PRICING.get((model.provider, model.name))
+def summarize(
+    results: list[SampleResult],
+    model: ModelSpec,
+    wall_time_s: float,
+    *,
+    judge_model: ModelSpec | None = None,
+) -> RunSummary:
+    """Reduce results to a RunSummary. Raises ResultsError on an unrecognized state.
+
+    judge_model is the judge scorer's own model (None for a non-judge eval).
+    total_cost_usd is strict: if either the primary model or (when present)
+    the judge model has no PRICING entry, the whole total is None rather than
+    silently summing only the priced side -- same loud-failure-over-silent-
+    undercount precedent as ResponseCache.put()'s JSON-serializability check.
+    cost_unpriced_models then names exactly which model(s) caused that.
+
+    Judge cost is billed per sample regardless of r.cached: `cached` reflects
+    only the primary response's cache status, and judge calls are never
+    cached (see NOTES.md), so a fully-cached primary run with a judge scorer
+    still has real, nonzero cost from the judge calls alone.
+    """
+    primary_prices = PRICING.get((model.provider, model.name))
+    judge_prices = PRICING.get((judge_model.provider, judge_model.name)) if judge_model else None
+
+    cost_unpriced: list[str] = []
+    if primary_prices is None:
+        cost_unpriced.append(f"primary model {model.provider}/{model.name}")
+    if judge_model is not None and judge_prices is None:
+        cost_unpriced.append(f"judge model {judge_model.provider}/{judge_model.name}")
 
     n_scored = 0
     n_provider_error = 0
@@ -74,8 +111,10 @@ def summarize(results: list[SampleResult], model: ModelSpec, wall_time_s: float)
     scored_scores: list[float] = []
     total_input_tokens = 0
     total_output_tokens = 0
+    total_judge_input_tokens = 0
+    total_judge_output_tokens = 0
     cache_hits = 0
-    cost = Decimal(0) if prices is not None else None
+    cost: Decimal | None = Decimal(0) if not cost_unpriced else None
 
     for r in results:
         if r.state == "scored":
@@ -93,12 +132,19 @@ def summarize(results: list[SampleResult], model: ModelSpec, wall_time_s: float)
 
         total_input_tokens += r.input_tokens or 0
         total_output_tokens += r.output_tokens or 0
+        total_judge_input_tokens += r.judge_input_tokens or 0
+        total_judge_output_tokens += r.judge_output_tokens or 0
         if r.cached:
             cache_hits += 1
-        elif cost is not None:
-            input_price, output_price = prices  # type: ignore[misc]
-            cost += (Decimal(r.input_tokens or 0) / _MILLION) * input_price
-            cost += (Decimal(r.output_tokens or 0) / _MILLION) * output_price
+        if cost is not None:
+            if not r.cached:
+                input_price, output_price = primary_prices  # type: ignore[misc]
+                cost += (Decimal(r.input_tokens or 0) / _MILLION) * input_price
+                cost += (Decimal(r.output_tokens or 0) / _MILLION) * output_price
+            if judge_model is not None:
+                judge_input_price, judge_output_price = judge_prices  # type: ignore[misc]
+                cost += (Decimal(r.judge_input_tokens or 0) / _MILLION) * judge_input_price
+                cost += (Decimal(r.judge_output_tokens or 0) / _MILLION) * judge_output_price
 
     mean_score = sum(scored_scores) / len(scored_scores) if scored_scores else None
 
@@ -113,6 +159,9 @@ def summarize(results: list[SampleResult], model: ModelSpec, wall_time_s: float)
         total_cost_usd=cost,
         wall_time_s=wall_time_s,
         cache_hits=cache_hits,
+        total_judge_input_tokens=total_judge_input_tokens,
+        total_judge_output_tokens=total_judge_output_tokens,
+        cost_unpriced_models=tuple(cost_unpriced),
     )
 
 

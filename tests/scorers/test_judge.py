@@ -282,3 +282,91 @@ async def test_score_judge_parse_failure_detail_includes_truncated_raw_reply(
     assert result.state == "judge_error"
     assert raw_reply[:50] in result.detail  # a meaningful prefix survives
     assert "TAIL_MARKER_SHOULD_BE_TRUNCATED_AWAY" not in result.detail  # tail is truncated away
+
+
+# --- score_judge: token accounting ----------------------------------------------
+#
+# FakeProvider.complete() reports a fixed 10 input / 5 output tokens per call
+# (see its definition above), so every assertion below is just 10*n_calls /
+# 5*n_calls for however many real provider calls that scenario made.
+
+
+async def test_score_judge_reports_tokens_consumed_even_when_it_ends_in_judge_error(
+    judge_path: Path,
+) -> None:
+    """A judge that never produces parseable JSON still burned two real API
+    calls (the original attempt and its one nudge retry) before giving up --
+    those tokens cost money and must be reported, not dropped along with the
+    score. Undercounting them here is the exact bug class this fix exists
+    for: a judge_error run must not silently look free."""
+    judge_file = load_judge_file(judge_path)
+    provider = FakeProvider(["garbage", "still garbage"])
+    result = await score_judge(SAMPLE, "4", make_scorer(), judge_file, provider)
+    assert result.state == "judge_error"
+    assert result.judge_input_tokens == 20
+    assert result.judge_output_tokens == 10
+
+
+async def test_score_judge_reports_judge_tokens_on_single_successful_call(
+    judge_path: Path,
+) -> None:
+    judge_file = load_judge_file(judge_path)
+    provider = FakeProvider(['{"score": 1, "reason": "correct"}'])
+    result = await score_judge(SAMPLE, "4", make_scorer(), judge_file, provider)
+    assert result.judge_input_tokens == 10
+    assert result.judge_output_tokens == 5
+
+
+async def test_score_judge_sums_tokens_across_nudge_retry(judge_path: Path) -> None:
+    judge_file = load_judge_file(judge_path)
+    provider = FakeProvider(["not json at all", '{"score": 1, "reason": "recovered"}'])
+    result = await score_judge(SAMPLE, "4", make_scorer(), judge_file, provider)
+    assert result.state == "scored"
+    # both the malformed first call and the nudge retry cost real tokens
+    assert result.judge_input_tokens == 20
+    assert result.judge_output_tokens == 10
+
+
+async def test_score_judge_sums_tokens_across_multiple_samples(judge_path: Path) -> None:
+    judge_file = load_judge_file(judge_path)
+    provider = FakeProvider(
+        [
+            '{"score": 1, "reason": "first"}',
+            '{"score": 0, "reason": "second"}',
+            '{"score": 1, "reason": "third"}',
+        ]
+    )
+    result = await score_judge(SAMPLE, "4", make_scorer(samples=3), judge_file, provider)
+    assert result.judge_input_tokens == 30
+    assert result.judge_output_tokens == 15
+
+
+async def test_score_judge_reports_zero_tokens_when_provider_never_returns_a_response(
+    judge_path: Path,
+) -> None:
+    # A ProviderError means .complete() itself raised -- no ProviderResponse
+    # was ever obtained, so there is genuinely nothing to bill. 0, not None:
+    # this is still a judge scorer, the token count is just legitimately zero.
+    judge_file = load_judge_file(judge_path)
+    provider = FakeProvider([ProviderError("rate limit retries exhausted")])
+    result = await score_judge(SAMPLE, "4", make_scorer(), judge_file, provider)
+    assert result.state == "judge_error"
+    assert result.judge_input_tokens == 0
+    assert result.judge_output_tokens == 0
+
+
+async def test_score_judge_samples_greater_than_one_short_circuit_reports_partial_tokens(
+    judge_path: Path,
+) -> None:
+    judge_file = load_judge_file(judge_path)
+    provider = FakeProvider(
+        [
+            '{"score": 1, "reason": "first"}',  # 1 good call: 10/5
+            "garbage",  # bad call: 10/5
+            "still garbage",  # nudge retry: 10/5
+        ]
+    )
+    result = await score_judge(SAMPLE, "4", make_scorer(samples=3), judge_file, provider)
+    assert result.state == "judge_error"
+    assert result.judge_input_tokens == 30
+    assert result.judge_output_tokens == 15

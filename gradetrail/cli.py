@@ -97,11 +97,17 @@ def _print_summary(summary: RunSummary) -> None:
     mean = f"{summary.mean_score:.4f}" if summary.mean_score is not None else "n/a"
     typer.echo(f"Mean score: {mean}")
     typer.echo(f"Tokens: {summary.total_input_tokens} in / {summary.total_output_tokens} out")
-    cost = (
-        f"${summary.total_cost_usd:.4f}"
-        if isinstance(summary.total_cost_usd, Decimal)
-        else "unknown"
-    )
+    if summary.total_judge_input_tokens or summary.total_judge_output_tokens:
+        typer.echo(
+            f"Judge tokens: {summary.total_judge_input_tokens} in / "
+            f"{summary.total_judge_output_tokens} out"
+        )
+    if isinstance(summary.total_cost_usd, Decimal):
+        cost = f"${summary.total_cost_usd:.4f}"
+    elif summary.cost_unpriced_models:
+        cost = f"unknown ({'; '.join(summary.cost_unpriced_models)})"
+    else:
+        cost = "unknown"
     typer.echo(f"Cost: {cost}")
     typer.echo(f"Cache hits: {summary.cache_hits}/{summary.n_samples}")
     typer.echo(f"Wall time: {summary.wall_time_s:.2f}s")

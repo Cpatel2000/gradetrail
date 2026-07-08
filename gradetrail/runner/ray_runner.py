@@ -173,5 +173,6 @@ class RayRunner(Runner):
             results.extend(batch_results)
 
         wall_time_s = time.monotonic() - start
-        summary = summarize(results, spec.model, wall_time_s)
+        judge_model = spec.scorer.model if isinstance(spec.scorer, JudgeScorer) else None
+        summary = summarize(results, spec.model, wall_time_s, judge_model=judge_model)
         return results, summary

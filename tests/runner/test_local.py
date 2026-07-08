@@ -326,6 +326,79 @@ async def test_invalid_judge_file_aborts_before_any_sample_runs(tmp_path: Path) 
     assert len(fake.calls) == 0
 
 
+# --- judge token accounting -----------------------------------------------------------
+
+
+async def test_judge_scorer_populates_judge_tokens_on_scored_sample(tmp_path: Path) -> None:
+    (tmp_path / "judge.yaml").write_text(VALID_JUDGE_YAML)
+    sample = {"id": "1", "question": "2+2?", "answer": "4"}
+    spec = make_spec(
+        tmp_path,
+        samples=[sample],
+        scorer=JudgeScorer(
+            type="judge",
+            judge_prompt="judge.yaml",
+            model=ModelSpec(provider="anthropic", name="judge-model"),
+        ),
+    )
+    main_fake = FakeProvider(reply_text="4")
+    judge_fake = FakeProvider(reply_text='{"score": 1, "reason": "correct"}')
+
+    def factory(model: ModelSpec, run: RunSpec) -> FakeProvider:
+        return judge_fake if model.name == "judge-model" else main_fake
+
+    runner = LocalRunner(cache_path=tmp_path / "cache.sqlite", provider_factory=factory)
+    results, summary = await runner.run(spec)
+
+    assert results[0].judge_input_tokens == 10
+    assert results[0].judge_output_tokens == 5
+    assert summary.total_judge_input_tokens == 10
+    assert summary.total_judge_output_tokens == 5
+
+
+async def test_non_judge_scorer_leaves_judge_token_fields_none(tmp_path: Path) -> None:
+    rows = [{"id": "1", "question": "2+2?", "answer": "42"}]
+    spec = make_spec(tmp_path, samples=rows)  # default scorer is ExactScorer
+    fake = FakeProvider(reply_text="42")
+    runner = LocalRunner(cache_path=tmp_path / "cache.sqlite", provider_factory=lambda m, r: fake)
+
+    results, summary = await runner.run(spec)
+
+    assert results[0].judge_input_tokens is None
+    assert results[0].judge_output_tokens is None
+    assert summary.total_judge_input_tokens == 0
+    assert summary.total_judge_output_tokens == 0
+
+
+async def test_judge_error_sample_still_reports_judge_tokens_consumed(tmp_path: Path) -> None:
+    (tmp_path / "judge.yaml").write_text(VALID_JUDGE_YAML)
+    rows = [{"id": "1", "question": "2+2?", "answer": "4"}]
+    spec = make_spec(
+        tmp_path,
+        samples=rows,
+        scorer=JudgeScorer(
+            type="judge",
+            judge_prompt="judge.yaml",
+            model=ModelSpec(provider="anthropic", name="judge-model"),
+        ),
+    )
+    main_fake = FakeProvider(reply_text="4")
+    judge_fake = FakeProvider(reply_text="not json, ever")  # always malformed -> 2 calls/sample
+
+    def factory(model: ModelSpec, run: RunSpec) -> FakeProvider:
+        return judge_fake if model.name == "judge-model" else main_fake
+
+    runner = LocalRunner(cache_path=tmp_path / "cache.sqlite", provider_factory=factory)
+    results, summary = await runner.run(spec)
+
+    assert results[0].state == "judge_error"
+    # the malformed first call and its one nudge retry both cost real tokens
+    assert results[0].judge_input_tokens == 20
+    assert results[0].judge_output_tokens == 10
+    assert summary.total_judge_input_tokens == 20
+    assert summary.total_judge_output_tokens == 10
+
+
 # --- sample_id -------------------------------------------------------------------------
 
 

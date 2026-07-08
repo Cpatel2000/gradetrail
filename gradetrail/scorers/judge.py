@@ -19,7 +19,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from gradetrail.errors import JudgeError, ProviderError
-from gradetrail.providers.base import Provider
+from gradetrail.providers.base import Provider, ProviderResponse
 from gradetrail.scorers.base import ScoreResult
 from gradetrail.spec import JudgeScorer
 
@@ -95,20 +95,38 @@ def _parse_reply(text: str, output: Literal["score_0_1", "binary"]) -> tuple[flo
 
 
 async def _judge_once(
-    prompt: str, provider: Provider, params: object, output: Literal["score_0_1", "binary"]
+    prompt: str,
+    provider: Provider,
+    params: object,
+    output: Literal["score_0_1", "binary"],
+    responses: list[ProviderResponse],
 ) -> tuple[float, str]:
     """One judge call, retried exactly once (with a nudge) on a parse failure.
 
     A ProviderError from provider.complete() is not retried here — base.py's
     own retry loop has already been exhausted, and a text nudge can't fix a
     network/rate-limit failure.
+
+    Every ProviderResponse actually obtained (the original attempt, and the
+    nudge retry if one happens) is appended to `responses` before this
+    function does anything that can raise, so the caller can bill every real
+    API call made here even if this ultimately raises JudgeError.
     """
     response = await provider.complete(prompt, params)
+    responses.append(response)
     try:
         return _parse_reply(response.text, output)
     except JudgeError:
         nudged = await provider.complete(prompt + _NUDGE, params)
+        responses.append(nudged)
         return _parse_reply(nudged.text, output)  # JudgeError propagates on second failure
+
+
+def _sum_tokens(responses: list[ProviderResponse]) -> tuple[int, int]:
+    return (
+        sum(r.input_tokens for r in responses),
+        sum(r.output_tokens for r in responses),
+    )
 
 
 async def score_judge(
@@ -122,22 +140,51 @@ async def score_judge(
 
     Short-circuits on the first judge_error rather than running all `samples`
     and reporting partial agreement (see NOTES.md for the tradeoff).
+
+    judge_input_tokens/judge_output_tokens on the returned ScoreResult sum
+    every real provider call made here -- including nudge retries, and
+    including calls made before a judge_error short-circuit -- because those
+    calls cost real money regardless of whether they end up producing a
+    usable score (see NOTES.md: this is the token-undercounting bug the
+    accounting was added to fix).
     """
     prompt = _JINJA_ENV.from_string(judge_file.prompt).render(**sample, response=response_text)
     scores: list[float] = []
     reasons: list[str] = []
+    responses: list[ProviderResponse] = []
     for _ in range(scorer.samples):
         try:
             score, reason = await _judge_once(
-                prompt, provider, scorer.model.params, judge_file.output
+                prompt, provider, scorer.model.params, judge_file.output, responses
             )
         except ProviderError as e:
             detail = str(e)
             if e.__cause__ is not None:
                 detail = f"{detail} (caused by: {e.__cause__})"
-            return ScoreResult(score=0.0, state="judge_error", detail=detail)
+            judge_input_tokens, judge_output_tokens = _sum_tokens(responses)
+            return ScoreResult(
+                score=0.0,
+                state="judge_error",
+                detail=detail,
+                judge_input_tokens=judge_input_tokens,
+                judge_output_tokens=judge_output_tokens,
+            )
         except JudgeError as e:
-            return ScoreResult(score=0.0, state="judge_error", detail=str(e))
+            judge_input_tokens, judge_output_tokens = _sum_tokens(responses)
+            return ScoreResult(
+                score=0.0,
+                state="judge_error",
+                detail=str(e),
+                judge_input_tokens=judge_input_tokens,
+                judge_output_tokens=judge_output_tokens,
+            )
         scores.append(score)
         reasons.append(reason)
-    return ScoreResult(score=sum(scores) / len(scores), state="scored", detail="; ".join(reasons))
+    judge_input_tokens, judge_output_tokens = _sum_tokens(responses)
+    return ScoreResult(
+        score=sum(scores) / len(scores),
+        state="scored",
+        detail="; ".join(reasons),
+        judge_input_tokens=judge_input_tokens,
+        judge_output_tokens=judge_output_tokens,
+    )

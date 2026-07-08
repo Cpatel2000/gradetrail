@@ -10,6 +10,7 @@ codes, and the summary print. Never a real provider, never a real runner.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 
@@ -143,6 +144,58 @@ def test_run_green_path_prints_summary_table(spec_file: Path, tmp_path: Path) ->
     assert result.exit_code == 0
     assert "1" in result.stdout  # n_samples / n_scored show up somewhere
     assert "1.0" in result.stdout or "1.00" in result.stdout  # mean score
+
+
+def test_run_green_path_omits_judge_tokens_line_when_zero(spec_file: Path, tmp_path: Path) -> None:
+    output_dir = tmp_path / "out"
+    result = runner.invoke(cli_module.app, ["run", str(spec_file), "--output-dir", str(output_dir)])
+    assert result.exit_code == 0
+    assert "Judge tokens" not in result.stdout
+
+
+def test_run_green_path_prints_judge_tokens_line_when_nonzero(
+    spec_file: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    summary_with_judge = dataclasses.replace(
+        FAKE_SUMMARY, total_judge_input_tokens=2750, total_judge_output_tokens=800
+    )
+
+    class _StubRunnerWithJudgeTokens:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        async def run(self, spec: object) -> tuple[list[SampleResult], RunSummary]:
+            return FAKE_RESULTS, summary_with_judge
+
+    monkeypatch.setattr(cli_module, "LocalRunner", _StubRunnerWithJudgeTokens)
+    output_dir = tmp_path / "out"
+    result = runner.invoke(cli_module.app, ["run", str(spec_file), "--output-dir", str(output_dir)])
+    assert result.exit_code == 0
+    assert "Judge tokens: 2750 in / 800 out" in result.stdout
+
+
+def test_run_green_path_cost_unknown_names_the_unpriced_model(
+    spec_file: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    summary_unpriced = dataclasses.replace(
+        FAKE_SUMMARY,
+        total_cost_usd=None,
+        cost_unpriced_models=("judge model openai/gpt-4o-mini",),
+    )
+
+    class _StubRunnerUnpriced:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        async def run(self, spec: object) -> tuple[list[SampleResult], RunSummary]:
+            return FAKE_RESULTS, summary_unpriced
+
+    monkeypatch.setattr(cli_module, "LocalRunner", _StubRunnerUnpriced)
+    output_dir = tmp_path / "out"
+    result = runner.invoke(cli_module.app, ["run", str(spec_file), "--output-dir", str(output_dir)])
+    assert result.exit_code == 0
+    assert "unknown" in result.stdout.lower()
+    assert "judge model openai/gpt-4o-mini" in result.stdout
 
 
 def test_run_green_path_exit_code_is_zero(spec_file: Path, tmp_path: Path) -> None:

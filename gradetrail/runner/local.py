@@ -163,6 +163,8 @@ async def _score_one(
         cached=cached,
         detail=score_result.detail,
         served_model=response.model if score_result.state == "scored" else None,
+        judge_input_tokens=score_result.judge_input_tokens,
+        judge_output_tokens=score_result.judge_output_tokens,
     )
 
 
@@ -222,5 +224,6 @@ class LocalRunner(Runner):
             )
 
         wall_time_s = time.monotonic() - start
-        summary = summarize(list(results), spec.model, wall_time_s)
+        judge_model = spec.scorer.model if isinstance(spec.scorer, JudgeScorer) else None
+        summary = summarize(list(results), spec.model, wall_time_s, judge_model=judge_model)
         return list(results), summary

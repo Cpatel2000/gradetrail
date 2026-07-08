@@ -18,3 +18,8 @@ class ScoreResult:
     score: float
     state: Literal["scored", "judge_error"]
     detail: str
+    # Only ever set by the judge scorer (None from score_exact/score_regex).
+    # Judge calls are never cached, so these are real tokens spent even when
+    # the primary response was a cache hit -- see NOTES.md.
+    judge_input_tokens: int | None = None
+    judge_output_tokens: int | None = None
