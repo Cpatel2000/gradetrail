@@ -195,3 +195,46 @@ async def test_fatal_sdk_error_is_not_retried() -> None:
     with pytest.raises(ProviderError):
         await provider.complete("2+2?", ModelParams())
     assert len(client.chat.completions.calls) == 1
+
+
+async def test_insufficient_quota_429_is_classified_fatal_not_retried() -> None:
+    # A no-credits OpenAI account returns HTTP 429 with error code
+    # "insufficient_quota" -- indistinguishable from an ordinary rate limit by
+    # status code alone, but retrying it is doomed: no amount of backoff makes
+    # quota reappear. Confirmed against the installed SDK's own
+    # _make_status_error (openai/_client.py): body.get("error", body) is
+    # unwrapped before APIStatusError.__init__ reads body.get("code").
+    exc = RateLimitError(
+        "You exceeded your current quota",
+        response=_status_response(429),
+        body={
+            "message": "You exceeded your current quota, please check your plan and billing.",
+            "type": "insufficient_quota",
+            "param": None,
+            "code": "insufficient_quota",
+        },
+    )
+    provider, client = make_provider([exc, make_message()], max_retries=5)
+    with pytest.raises(ProviderError):
+        await provider.complete("2+2?", ModelParams())
+    assert len(client.chat.completions.calls) == 1  # no retry burned on a doomed request
+
+
+async def test_ordinary_rate_limit_429_without_quota_code_still_retryable() -> None:
+    # Only the specific insufficient_quota code is fatal -- an ordinary
+    # rate-limit 429 (a different error code, or no body at all) must remain
+    # retryable, since that one *does* resolve with backoff.
+    exc = RateLimitError(
+        "Rate limit reached",
+        response=_status_response(429),
+        body={
+            "message": "Rate limit reached for requests",
+            "type": "requests",
+            "param": None,
+            "code": "rate_limit_exceeded",
+        },
+    )
+    provider, client = make_provider([exc, make_message()], max_retries=1)
+    result = await provider.complete("2+2?", ModelParams())
+    assert result.text == "Answer: 4"
+    assert len(client.chat.completions.calls) == 2

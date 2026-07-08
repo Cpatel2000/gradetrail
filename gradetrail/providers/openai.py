@@ -84,5 +84,12 @@ class OpenAIProvider(Provider):
         if isinstance(exc, openai.APIConnectionError):  # includes APITimeoutError
             return "retryable"
         if isinstance(exc, openai.APIStatusError):
-            return "retryable" if exc.status_code == 429 or exc.status_code >= 500 else "fatal"
+            if exc.status_code == 429:
+                # A no-credits account's 429 carries error code
+                # "insufficient_quota" -- retrying it just burns attempts on
+                # a request that can never succeed (see NOTES.md).
+                if getattr(exc, "code", None) == "insufficient_quota":
+                    return "fatal"
+                return "retryable"
+            return "retryable" if exc.status_code >= 500 else "fatal"
         return "fatal"
