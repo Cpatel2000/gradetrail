@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from evalflow.errors import EvalflowError, JudgeError, ProviderError
+from evalflow.errors import JudgeError, ProviderError
 from evalflow.providers.base import ProviderResponse
 from evalflow.runner.local import LocalRunner
 from evalflow.spec import (
@@ -324,21 +324,6 @@ async def test_invalid_judge_file_aborts_before_any_sample_runs(tmp_path: Path) 
     with pytest.raises(JudgeError):
         await runner.run(spec)
     assert len(fake.calls) == 0
-
-
-# --- provider factory ------------------------------------------------------------------
-
-
-async def test_default_provider_factory_rejects_unimplemented_providers(tmp_path: Path) -> None:
-    # Deliberately EvalflowError, not SpecError: the spec is valid per the schema,
-    # the provider just isn't implemented yet. SpecError must always mean "your
-    # spec is wrong" -- reusing it here would send users hunting for a typo.
-    spec = make_spec(tmp_path, model=ModelSpec(provider="openai", name="gpt-5.1"))
-    runner = LocalRunner(cache_path=tmp_path / "cache.sqlite")  # default factory, no override
-
-    with pytest.raises(EvalflowError, match="openai") as exc_info:
-        await runner.run(spec)
-    assert exc_info.type is EvalflowError  # exactly the base error, not a SpecError subclass
 
 
 # --- sample_id -------------------------------------------------------------------------

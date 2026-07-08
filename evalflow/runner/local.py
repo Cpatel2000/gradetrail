@@ -19,9 +19,11 @@ import jinja2
 import structlog
 
 from evalflow.cache import ResponseCache
-from evalflow.errors import EvalflowError, ProviderError
+from evalflow.errors import ProviderError
 from evalflow.providers.anthropic import AnthropicProvider
 from evalflow.providers.base import Provider, ProviderResponse
+from evalflow.providers.openai import OpenAIProvider
+from evalflow.providers.openai_compatible import OpenAICompatibleProvider
 from evalflow.results import RunSummary, SampleResult, summarize
 from evalflow.runner.base import Runner
 from evalflow.scorers.base import ScoreResult
@@ -40,8 +42,17 @@ def _default_provider_factory(model: ModelSpec, run: RunSpec) -> Provider:
         return AnthropicProvider(
             model=model.name, max_retries=run.max_retries, timeout_s=run.timeout_s
         )
-    raise EvalflowError(
-        f"provider {model.provider!r} is not implemented yet (only 'anthropic' in this version)"
+    if model.provider == "openai":
+        return OpenAIProvider(
+            model=model.name, max_retries=run.max_retries, timeout_s=run.timeout_s
+        )
+    assert model.provider == "openai_compatible"  # the only remaining case (closed Literal)
+    assert model.base_url is not None  # ModelSpec's own validator guarantees this
+    return OpenAICompatibleProvider(
+        model=model.name,
+        base_url=model.base_url,
+        max_retries=run.max_retries,
+        timeout_s=run.timeout_s,
     )
 
 
