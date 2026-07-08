@@ -1,0 +1,21 @@
+name: sentiment-classification
+description: >
+  Single-word sentiment classification (positive/negative/neutral) on short
+  product and movie reviews, exact-match scored.
+dataset:
+  path: data/sentiment_50.jsonl
+prompt: |
+  Classify the sentiment of the following review as exactly one word:
+  positive, negative, or neutral. Reply with only that one word and nothing
+  else.
+
+  {{ text }}
+model:
+  provider: anthropic
+  name: claude-sonnet-4-6
+  params:
+    max_tokens: 8
+scorer:
+  type: exact
+  target_field: label
+  normalize: [strip, lower]

@@ -1,0 +1,24 @@
+name: judge-qa
+description: >
+  Open-ended factual QA scored by an LLM judge against short reference
+  answers (science, history, geography, everyday knowledge).
+dataset:
+  path: data/qa_openended.jsonl
+prompt: |
+  Answer the following question concisely, in one sentence.
+
+  {{ question }}
+model:
+  provider: anthropic
+  name: claude-sonnet-4-6
+  params:
+    max_tokens: 256
+    temperature: 0.0
+scorer:
+  type: judge
+  judge_prompt: ../judges/qa_correctness_v1.yaml
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    params:
+      temperature: 0.0

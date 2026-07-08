@@ -63,6 +63,8 @@ Wall time: 2.50s
 
 Run it again and it completes in about 40ms at $0.00: every response is cached, keyed on the request, not the scorer. The run writes `results/<name>-<identity-hash>/results.jsonl` (per-sample scores and responses) and `manifest.json` (spec hash, dataset hash, git SHA, timings, cost, so you can tell later exactly what produced a given number).
 
+More specs, covering all three scorer types (`exact`, `regex`, `judge`) and a cross-provider comparison pair, are in [examples/](examples/).
+
 ## Why
 
 - **Cached**: responses are keyed on (provider, model, base_url, resolved prompt, params); re-runs are free, and a prompt edit invalidates only the affected samples.

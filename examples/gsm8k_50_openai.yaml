@@ -1,0 +1,25 @@
+name: gsm8k-50-openai
+description: >
+  GSM8K, first 50 samples of gsm8k_500.jsonl, on OpenAI. Paired with
+  gsm8k_50_anthropic.yaml (same samples, same prompt, same scorer) for an
+  apples-to-apples cross-provider comparison.
+dataset:
+  path: data/gsm8k_500.jsonl
+  limit: 50
+prompt: |
+  Solve the following math problem. End your response with the line
+  "Answer: <number>".
+
+  {{ question }}
+model:
+  provider: openai
+  name: gpt-4o-mini
+  params:
+    max_tokens: 512
+scorer:
+  type: regex
+  # \.? tolerates a trailing sentence-period after the number ("Answer: 25.")
+  # without permitting a decimal continuation ("Answer: 25.5"): after the
+  # optional literal ".", \s*$ still demands nothing but whitespace to the end,
+  # so any digit right after the "." (a real decimal) blocks the match.
+  pattern: 'Answer:\s*\$?{{ answer_pattern }}\.?\s*$'

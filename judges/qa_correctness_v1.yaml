@@ -1,0 +1,12 @@
+version: 1
+output: score_0_1
+prompt: |
+  You are grading a model response for factual correctness against a
+  reference answer. Minor differences in phrasing, formatting, or units
+  do not matter; only factual correctness does.
+
+  Question: {{ question }}
+  Reference answer: {{ reference }}
+  Model response: {{ response }}
+
+  Reply with only a JSON object: {"score": 0 or 1, "reason": "<one sentence>"}
