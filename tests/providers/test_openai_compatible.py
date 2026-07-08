@@ -1,4 +1,4 @@
-"""Tests for evalflow.providers.openai_compatible: the OpenAI client pointed at
+"""Tests for reproeval.providers.openai_compatible: the OpenAI client pointed at
 a custom base_url (vLLM, Together, local inference servers, etc.).
 
 _complete/classify are inherited unchanged from OpenAIProvider and are fully
@@ -7,10 +7,10 @@ for this provider: that base_url reaches the real client constructor, plus
 one smoke test confirming the inherited response mapping still works through
 the subclass.
 
-Patches evalflow.providers.openai.openai.AsyncOpenAI (not
+Patches reproeval.providers.openai.openai.AsyncOpenAI (not
 .openai_compatible.openai.AsyncOpenAI) deliberately: OpenAICompatibleProvider
 calls the inherited OpenAIProvider.__init__, whose body resolves the `openai`
-name from evalflow.providers.openai's own module globals, not this module's.
+name from reproeval.providers.openai's own module globals, not this module's.
 """
 
 from __future__ import annotations
@@ -22,9 +22,9 @@ from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletion, ChatCompletionMessage
 from openai.types.chat.chat_completion import Choice
 
-from evalflow.errors import ProviderError
-from evalflow.providers.openai_compatible import OpenAICompatibleProvider
-from evalflow.spec import ModelParams
+from reproeval.errors import ProviderError
+from reproeval.providers.openai_compatible import OpenAICompatibleProvider
+from reproeval.spec import ModelParams
 
 BASE_URL = "http://localhost:8000/v1"
 _REQUEST = httpx.Request("POST", BASE_URL + "/chat/completions")
@@ -96,7 +96,7 @@ async def test_base_url_reaches_the_real_client_constructor(
             captured_kwargs.update(kwargs)
             self.chat = FakeChat([make_message()])
 
-    import evalflow.providers.openai as openai_provider_module
+    import reproeval.providers.openai as openai_provider_module
 
     monkeypatch.setattr(openai_provider_module.openai, "AsyncOpenAI", RecordingAsyncOpenAI)
 
@@ -111,7 +111,7 @@ async def test_explicit_client_bypasses_base_url_construction(
 ) -> None:
     # If a client is injected (as in every other test here), the real
     # AsyncOpenAI constructor -- and base_url -- must never be touched at all.
-    import evalflow.providers.openai as openai_provider_module
+    import reproeval.providers.openai as openai_provider_module
 
     def boom(**kwargs: object) -> None:
         raise AssertionError("real AsyncOpenAI constructor should not be called")

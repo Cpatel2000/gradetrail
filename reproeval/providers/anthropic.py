@@ -7,8 +7,8 @@ from typing import Literal
 
 import anthropic
 
-from evalflow.providers.base import Provider, ProviderResponse
-from evalflow.spec import ModelParams
+from reproeval.providers.base import Provider, ProviderResponse
+from reproeval.spec import ModelParams
 
 
 class AnthropicProvider(Provider):

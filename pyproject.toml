@@ -1,5 +1,5 @@
 [project]
-name = "evalflow"
+name = "reproeval"
 version = "0.1.0.dev0"
 description = "A distributed LLM evaluation harness: declarative, cached, reproducible."
 readme = "README.md"
@@ -41,8 +41,8 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/Cpatel2000/evalflow"
-Issues = "https://github.com/Cpatel2000/evalflow/issues"
+Repository = "https://github.com/Cpatel2000/reproeval"
+Issues = "https://github.com/Cpatel2000/reproeval/issues"
 
 [project.optional-dependencies]
 dev = [
@@ -57,7 +57,7 @@ ray = [
 ]
 
 [project.scripts]
-evalflow = "evalflow.cli:main"
+reproeval = "reproeval.cli:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -71,7 +71,7 @@ target-version = "py311"
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["evalflow"]
+known-first-party = ["reproeval"]
 
 [tool.ruff.lint.flake8-bugbear]
 # typer's API is built around calling Argument()/Option() as argument defaults.

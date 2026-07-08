@@ -1,4 +1,4 @@
-"""Tests for evalflow.results: SampleResult/RunSummary, summarize(), and JSONL I/O.
+"""Tests for reproeval.results: SampleResult/RunSummary, summarize(), and JSONL I/O.
 
 Encodes design doc rule 5: every sample terminates in exactly one state
 (scored, provider_error, judge_error); summarize() reports counts of each and
@@ -14,9 +14,9 @@ from pathlib import Path
 
 import pytest
 
-from evalflow.errors import ResultsError
-from evalflow.results import PRICING, RunSummary, SampleResult, read_jsonl, summarize, write_jsonl
-from evalflow.spec import ModelSpec
+from reproeval.errors import ResultsError
+from reproeval.results import PRICING, RunSummary, SampleResult, read_jsonl, summarize, write_jsonl
+from reproeval.spec import ModelSpec
 
 PRICED_MODEL = ModelSpec(provider="anthropic", name="claude-sonnet-4-6")
 UNKNOWN_MODEL = ModelSpec(provider="anthropic", name="claude-nonexistent-model-xyz")

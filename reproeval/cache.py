@@ -18,7 +18,7 @@ from types import TracebackType
 
 import aiosqlite
 
-from evalflow.errors import CacheError
+from reproeval.errors import CacheError
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS responses (

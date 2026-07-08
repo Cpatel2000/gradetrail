@@ -1,4 +1,4 @@
-"""Tests for evalflow.cache: SQLite response cache and its key derivation.
+"""Tests for reproeval.cache: SQLite response cache and its key derivation.
 
 Encodes design doc rule 2 (docs/design/eval-spec.md): the cache key is per-sample
 sha256 of canonical JSON of (provider, model, base_url, resolved prompt, params).
@@ -14,9 +14,9 @@ from pathlib import Path
 
 import pytest
 
-import evalflow.cache as cache_module
-from evalflow.cache import ResponseCache, cache_key
-from evalflow.errors import CacheError
+import reproeval.cache as cache_module
+from reproeval.cache import ResponseCache, cache_key
+from reproeval.errors import CacheError
 
 BASE_KWARGS = dict(
     provider="anthropic",

@@ -1,14 +1,14 @@
-"""Tests for evalflow.scorers.deterministic: exact and regex scorers.
+"""Tests for reproeval.scorers.deterministic: exact and regex scorers.
 
 Deterministic scorers can never fail — malformed inputs (bad regex, wrong
-scorer types) are already rejected at spec load time (evalflow/spec.py).
+scorer types) are already rejected at spec load time (reproeval/spec.py).
 These tests exercise scoring behavior only, not validation.
 """
 
 from __future__ import annotations
 
-from evalflow.scorers.deterministic import score_exact, score_regex
-from evalflow.spec import ExactScorer, RegexScorer
+from reproeval.scorers.deterministic import score_exact, score_regex
+from reproeval.spec import ExactScorer, RegexScorer
 
 # --- exact -------------------------------------------------------------------
 

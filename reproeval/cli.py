@@ -14,16 +14,16 @@ from pathlib import Path
 
 import typer
 
-from evalflow.errors import DatasetError, SpecError
-from evalflow.manifest import write_manifest
-from evalflow.results import RunSummary, write_jsonl
-from evalflow.runner.local import LocalRunner
-from evalflow.runner.ray_runner import RayRunner
-from evalflow.spec import compute_identity, load_spec
+from reproeval.errors import DatasetError, SpecError
+from reproeval.manifest import write_manifest
+from reproeval.results import RunSummary, write_jsonl
+from reproeval.runner.local import LocalRunner
+from reproeval.runner.ray_runner import RayRunner
+from reproeval.spec import compute_identity, load_spec
 
 app = typer.Typer()
 
-_DEFAULT_CACHE_PATH = Path(".evalflow_cache.sqlite")
+_DEFAULT_CACHE_PATH = Path(".reproeval_cache.sqlite")
 _MAX_DEFAULT_WORKERS = 8
 
 
@@ -37,7 +37,7 @@ class Backend(enum.StrEnum):
 
 @app.callback()
 def _main() -> None:
-    """evalflow: a distributed LLM evaluation harness."""
+    """reproeval: a distributed LLM evaluation harness."""
 
 
 @app.command()

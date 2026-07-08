@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from evalflow.results import RunSummary, SampleResult
-from evalflow.spec import EvalSpec
+from reproeval.results import RunSummary, SampleResult
+from reproeval.spec import EvalSpec
 
 
 class Runner(ABC):

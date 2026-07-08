@@ -18,10 +18,10 @@ import jinja2
 import yaml
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from evalflow.errors import JudgeError, ProviderError
-from evalflow.providers.base import Provider
-from evalflow.scorers.base import ScoreResult
-from evalflow.spec import JudgeScorer
+from reproeval.errors import JudgeError, ProviderError
+from reproeval.providers.base import Provider
+from reproeval.scorers.base import ScoreResult
+from reproeval.spec import JudgeScorer
 
 _JINJA_ENV = jinja2.Environment(undefined=jinja2.StrictUndefined)
 _NUDGE = "\n\nReply with only the JSON object and no other text."

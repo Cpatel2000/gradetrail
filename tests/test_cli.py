@@ -1,4 +1,4 @@
-"""Tests for evalflow.cli: argument wiring, output paths, exit codes.
+"""Tests for reproeval.cli: argument wiring, output paths, exit codes.
 
 LocalRunner and RayRunner are stubbed out here -- runner internals
 (concurrency, caching, scoring, provider failures, real Ray execution) are
@@ -16,8 +16,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-import evalflow.cli as cli_module
-from evalflow.results import RunSummary, SampleResult
+import reproeval.cli as cli_module
+from reproeval.results import RunSummary, SampleResult
 
 runner = CliRunner()
 

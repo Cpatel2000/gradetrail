@@ -1,4 +1,4 @@
-"""Tests for evalflow.providers.openai: the async OpenAI SDK binding.
+"""Tests for reproeval.providers.openai: the async OpenAI SDK binding.
 
 Mocks only at the SDK boundary (client.chat.completions.create), using
 hand-built openai.types.chat.ChatCompletion objects and real openai exception
@@ -24,9 +24,9 @@ from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletion, ChatCompletionMessage
 from openai.types.chat.chat_completion import Choice
 
-from evalflow.errors import ProviderError
-from evalflow.providers.openai import OpenAIProvider
-from evalflow.spec import ModelParams
+from reproeval.errors import ProviderError
+from reproeval.providers.openai import OpenAIProvider
+from reproeval.spec import ModelParams
 
 MODEL = "gpt-5.1"
 _REQUEST = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")

@@ -1,4 +1,4 @@
-# evalflow
+# reproeval
 
 A distributed LLM evaluation harness that treats evals like tests: declarative, cached, reproducible.
 
@@ -7,7 +7,7 @@ A distributed LLM evaluation harness that treats evals like tests: declarative, 
 ## Quickstart
 
 ```bash
-pip install evalflow  # not yet published on PyPI
+pip install reproeval  # not yet published on PyPI
 ```
 
 Define an eval:
@@ -41,7 +41,7 @@ scorer:
 Run it:
 
 ```bash
-evalflow run gsm8k_subset.yaml
+reproeval run gsm8k_subset.yaml
 ```
 
 Output from an actual run of this exact spec:
@@ -60,7 +60,7 @@ Wall time: 0.04s
 ## Why
 
 - **Cached**: responses are keyed on (provider, model, base_url, resolved prompt, params); re-runs are free, and a prompt edit invalidates only the affected samples.
-- **Reproducible**: every run writes a manifest (spec identity hash, dataset hash, judge file hash, requested vs served model, git SHA, evalflow version).
+- **Reproducible**: every run writes a manifest (spec identity hash, dataset hash, judge file hash, requested vs served model, git SHA, reproeval version).
 - **Multi-provider**: Anthropic, OpenAI, and any OpenAI-compatible endpoint (vLLM, local inference servers), through one provider abstraction with a shared retry/backoff policy.
 - **Versioned judges**: LLM-as-judge prompts are separate, hashed files, not strings inlined in the spec.
 - **Distributed**: the same spec runs unchanged on a local asyncio backend or a single-machine Ray cluster; the backend is a CLI flag, not a spec field.

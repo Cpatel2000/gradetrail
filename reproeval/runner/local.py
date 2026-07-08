@@ -23,18 +23,18 @@ from pathlib import Path
 import jinja2
 import structlog
 
-from evalflow.cache import ResponseCache
-from evalflow.errors import ProviderError
-from evalflow.providers.anthropic import AnthropicProvider
-from evalflow.providers.base import Provider, ProviderResponse
-from evalflow.providers.openai import OpenAIProvider
-from evalflow.providers.openai_compatible import OpenAICompatibleProvider
-from evalflow.results import RunSummary, SampleResult, summarize
-from evalflow.runner.base import Runner
-from evalflow.scorers.base import ScoreResult
-from evalflow.scorers.deterministic import score_exact, score_regex
-from evalflow.scorers.judge import JudgeFile, load_judge_file, score_judge
-from evalflow.spec import EvalSpec, ExactScorer, JudgeScorer, ModelSpec, RegexScorer, RunSpec
+from reproeval.cache import ResponseCache
+from reproeval.errors import ProviderError
+from reproeval.providers.anthropic import AnthropicProvider
+from reproeval.providers.base import Provider, ProviderResponse
+from reproeval.providers.openai import OpenAIProvider
+from reproeval.providers.openai_compatible import OpenAICompatibleProvider
+from reproeval.results import RunSummary, SampleResult, summarize
+from reproeval.runner.base import Runner
+from reproeval.scorers.base import ScoreResult
+from reproeval.scorers.deterministic import score_exact, score_regex
+from reproeval.scorers.judge import JudgeFile, load_judge_file, score_judge
+from reproeval.spec import EvalSpec, ExactScorer, JudgeScorer, ModelSpec, RegexScorer, RunSpec
 
 _JINJA_ENV = jinja2.Environment(undefined=jinja2.StrictUndefined)
 _log = structlog.get_logger(__name__)

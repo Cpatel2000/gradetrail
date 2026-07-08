@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import openai
 
-from evalflow.providers.openai import OpenAIProvider
+from reproeval.providers.openai import OpenAIProvider
 
 
 class OpenAICompatibleProvider(OpenAIProvider):
