@@ -14,8 +14,17 @@ examples/gsm8k_500.yaml, which uses answer_pattern (not answer) in its regex.
 from __future__ import annotations
 
 import json
+import re
 
 from datasets import load_dataset
+
+# Must stay in sync with examples/gsm8k_500.yaml's scorer.pattern. The trailing
+# `\.?` tolerates a sentence-period after the number ("Answer: 25.") without
+# permitting a decimal continuation ("Answer: 25.5") -- see _verify_pattern
+# below and NOTES.md for why this lives in the spec's literal template rather
+# than in answer_pattern (it's a universal formatting concern, not a
+# per-sample-value one like the comma grouping is).
+_SPEC_PATTERN_TEMPLATE = r"Answer:\s*\$?{answer_pattern}\.?\s*$"
 
 
 def _comma_tolerant_pattern(answer: str) -> str:
@@ -34,7 +43,25 @@ def _comma_tolerant_pattern(answer: str) -> str:
     return sign + "".join(reversed(grouped))
 
 
+def _verify_pattern() -> None:
+    """Regex-level check of the trailing-period fix against the exact template
+    the spec renders. Must hold: a trailing sentence-period matches, but a
+    real decimal continuation, or a longer number with the same prefix, does
+    not -- run on every invocation of this script, not just once by hand."""
+    pattern = _SPEC_PATTERN_TEMPLATE.format(answer_pattern=_comma_tolerant_pattern("25"))
+    cases = [
+        ("Answer: 25", True),
+        ("Answer: 25.", True),
+        ("Answer: 25.5", False),
+        ("Answer: 250", False),
+    ]
+    for text, expected in cases:
+        matched = re.search(pattern, text) is not None
+        assert matched == expected, f"{text!r}: expected match={expected}, got {matched}"
+
+
 def main() -> None:
+    _verify_pattern()
     ds = load_dataset("openai/gsm8k", "main", split="test")
     with open("examples/data/gsm8k_500.jsonl", "w") as f:
         for i, row in enumerate(ds.select(range(500))):

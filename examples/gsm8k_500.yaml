@@ -13,4 +13,8 @@ model:
     max_tokens: 512
 scorer:
   type: regex
-  pattern: 'Answer:\s*\$?{{ answer_pattern }}\s*$'
+  # \.? tolerates a trailing sentence-period after the number ("Answer: 25.")
+  # without permitting a decimal continuation ("Answer: 25.5"): after the
+  # optional literal ".", \s*$ still demands nothing but whitespace to the end,
+  # so any digit right after the "." (a real decimal) blocks the match.
+  pattern: 'Answer:\s*\$?{{ answer_pattern }}\.?\s*$'
