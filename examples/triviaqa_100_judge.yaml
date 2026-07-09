@@ -1,0 +1,31 @@
+name: triviaqa-100-judge
+description: >
+  TriviaQA (rc.nocontext validation, first 100), scored by an alias-aware LLM
+  judge that credits a response matching ANY of TriviaQA's accepted answer
+  forms. Paired with triviaqa_100_exact.yaml (same samples, same prompt, same
+  model): the accuracy gap between the two runs is the exact scorer's
+  measurement error on free-text answers, made visible in the viewer's diff.
+dataset:
+  path: data/triviaqa_100.jsonl
+prompt: |
+  Answer the following trivia question with just the answer -- no explanation,
+  no sentence around it.
+
+  {{ question }}
+model:
+  provider: anthropic
+  name: claude-sonnet-4-6
+  params:
+    max_tokens: 128
+    temperature: 0.0
+scorer:
+  type: judge
+  # ../ because judge paths resolve against the spec file's directory, not the
+  # repo root (see NOTES.md 2026-07-08).
+  judge_prompt: ../judges/qa_alias_correctness_v1.yaml
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    params:
+      max_tokens: 128
+      temperature: 0.0

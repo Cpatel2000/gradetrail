@@ -1,0 +1,30 @@
+name: triviaqa-100-exact
+description: >
+  TriviaQA (rc.nocontext validation, first 100), scored by regex containment
+  of the PRIMARY answer only -- deliberately alias-blind. Paired with
+  triviaqa_100_judge.yaml (same samples, same prompt, same model) to quantify
+  scorer-induced measurement error: 94/100 samples have more than one accepted
+  alias (max 62), none of which this scorer can credit. Diff the two runs in
+  the viewer to see exactly which samples the exact scorer under-scores.
+dataset:
+  path: data/triviaqa_100.jsonl
+prompt: |
+  Answer the following trivia question with just the answer -- no explanation,
+  no sentence around it.
+
+  {{ question }}
+model:
+  provider: anthropic
+  name: claude-sonnet-4-6
+  params:
+    max_tokens: 128
+    temperature: 0.0
+scorer:
+  type: regex
+  # The raw answer is interpolated unescaped: the spec's jinja environment has
+  # no regex-escape filter, so scripts/build_triviaqa_100.py verifies at build
+  # time that every answer in this slice compiles as a pattern fragment and
+  # matches itself ("J. G. Ballard"'s dots match themselves, just loosely).
+  # Keep in sync with _SPEC_PATTERN_TEMPLATE in that script.
+  pattern: '\b{{ answer }}\b'
+  flags: [IGNORECASE]

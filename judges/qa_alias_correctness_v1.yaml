@@ -1,0 +1,16 @@
+version: 1
+output: binary
+prompt: |
+  You are grading a trivia response. The reference lists one primary answer
+  and a set of accepted aliases; the response is correct if it gives the same
+  answer in ANY accepted form, or an unambiguous equivalent differing only in
+  formatting, casing, punctuation, or added articles/honorifics. It is
+  incorrect if it names a different entity, gives no answer, or hedges
+  between multiple answers.
+
+  Question: {{ question }}
+  Primary answer: {{ answer }}
+  Accepted aliases: {{ aliases | join("; ") }}
+  Model response: {{ response }}
+
+  Reply with only a JSON object: {"score": 0 or 1, "reason": "<one sentence>"}
