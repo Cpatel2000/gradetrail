@@ -25,6 +25,11 @@
                text-transform: uppercase; letter-spacing: 0.03em; }
   .expand pre { white-space: pre-wrap; word-break: break-word; margin: 0;
                 font-size: 0.85rem; font-family: ui-monospace, "SF Mono", Consolas, monospace; }
+  .controls { display: flex; gap: 1.25rem; align-items: center; margin: 0.75rem 0;
+              font-size: 0.85rem; flex-wrap: wrap; }
+  .controls label { display: flex; gap: 0.35rem; align-items: center; }
+  .controls select, .controls input { font-size: 0.85rem; }
+  .controls input[type="search"] { padding: 2px 6px; width: 20rem; }
 </style>
 </head>
 <body>
@@ -67,6 +72,17 @@ async function fetchJSON(path) {
   return resp.json();
 }
 
+// Element.append() returns undefined (unlike appendChild) -- never chain off it.
+function tableWithHead(cols, numCols) {
+  const table = el("table");
+  const head = el("tr");
+  for (const col of cols) head.append(el("th", numCols.includes(col) ? "num" : "", col));
+  const thead = el("thead");
+  thead.append(head);
+  table.append(thead);
+  return table;
+}
+
 // --- run list view ------------------------------------------------------------------
 
 function runNotes(run) {
@@ -104,17 +120,6 @@ function listRow(run) {
   return tr;
 }
 
-// Element.append() returns undefined (unlike appendChild) -- never chain off it.
-function tableWithHead(cols, numCols) {
-  const table = el("table");
-  const head = el("tr");
-  for (const col of cols) head.append(el("th", numCols.includes(col) ? "num" : "", col));
-  const thead = el("thead");
-  thead.append(head);
-  table.append(thead);
-  return table;
-}
-
 async function showList(view) {
   const runs = await fetchJSON("/api/runs");
   const table = tableWithHead(
@@ -127,7 +132,64 @@ async function showList(view) {
   setStatus(runs.length + " run(s)");
 }
 
+// --- filter / sort / search state (all of it lives in the URL hash) -------------------
+
+function parseFilters(hash) {
+  const i = hash.indexOf("?");
+  const p = new URLSearchParams(i === -1 ? "" : hash.slice(i + 1));
+  return {
+    state: p.get("state") || "all",
+    zero: p.get("zero") === "1",
+    sort: p.get("sort") || "file",
+    q: p.get("q") || "",
+  };
+}
+
+function filtersToHash(dir, f) {
+  const p = new URLSearchParams();
+  if (f.state !== "all") p.set("state", f.state);
+  if (f.zero) p.set("zero", "1");
+  if (f.sort !== "file") p.set("sort", f.sort);
+  if (f.q) p.set("q", f.q);
+  const qs = p.toString();
+  return "#/run/" + encodeURIComponent(dir) + (qs ? "?" + qs : "");
+}
+
+function sampleMatches(s, f) {
+  if (f.state !== "all" && s.state !== f.state) return false;
+  if (f.zero && !(s.state === "scored" && s.score === 0)) return false;
+  if (f.q) {
+    const q = f.q.toLowerCase();
+    const hay = [s.response_text, s.detail];
+    if (s.sample) {
+      for (const v of Object.values(s.sample)) {
+        hay.push(typeof v === "string" ? v : JSON.stringify(v));
+      }
+    }
+    return hay.some((v) => v !== null && v !== undefined &&
+                           String(v).toLowerCase().includes(q));
+  }
+  return true;
+}
+
+function compareIds(a, b) {
+  const na = Number(a), nb = Number(b);
+  if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+  return String(a).localeCompare(String(b));
+}
+
+function sortedSamples(samples, key) {
+  if (key === "id") return [...samples].sort((a, b) => compareIds(a.sample_id, b.sample_id));
+  if (key === "score") {
+    // Ascending, zeros first (the audit reads top-down); null scores (error states) last.
+    return [...samples].sort((a, b) => (a.score ?? Infinity) - (b.score ?? Infinity));
+  }
+  return samples;  // "file": results.jsonl order, as served
+}
+
 // --- single run view ----------------------------------------------------------------
+
+let runCache = { dir: null, data: null };  // fetch once per run; filters work from memory
 
 function transcript(s) {
   const box = el("div", "expand-body");
@@ -161,27 +223,100 @@ function transcript(s) {
   return box;
 }
 
-function sampleRow(s, tbody) {
+// accordion: in manual browsing, opening a transcript collapses the previous one.
+// In audit mode (zero=1) every visible transcript starts expanded and rows toggle
+// independently -- the whole point is seeing all failures at once.
+function sampleRow(s, audit, accordion) {
   const tr = el("tr", "rowlink");
+  const zero = s.state === "scored" && s.score === 0;
   tr.append(
     td(s.sample_id),
     td(s.state, s.state === "scored" ? "" : "err"),
-    td(fmtScore(s.score), "num"),
+    td(fmtScore(s.score), zero ? "num err" : "num"),
     td(s.cached ? "yes" : "", "num"),
     td(s.input_tokens, "num"),
     td(s.output_tokens, "num")
   );
-  let expanded = null;
-  tr.addEventListener("click", () => {
-    if (expanded) { expanded.remove(); expanded = null; return; }
-    expanded = el("tr");
+  let panel = null;
+  const collapse = () => { if (panel) { panel.remove(); panel = null; } };
+  const expand = () => {
+    if (panel) return;
+    panel = el("tr");
     const cell = td("", "expand");
     cell.colSpan = 6;
     cell.append(transcript(s));
-    expanded.append(cell);
-    tr.after(expanded);
+    panel.append(cell);
+    tr.after(panel);  // requires tr to be in the DOM already
+  };
+  tr.addEventListener("click", () => {
+    if (panel) {
+      collapse();
+      if (accordion.collapseOpen === collapse) accordion.collapseOpen = null;
+      return;
+    }
+    if (!audit && accordion.collapseOpen) accordion.collapseOpen();
+    expand();
+    accordion.collapseOpen = collapse;
   });
-  return tr;
+  return { tr, expand };
+}
+
+function renderSamples(tbody, samples, f) {
+  tbody.replaceChildren();
+  const audit = f.zero;
+  const accordion = { collapseOpen: null };
+  const rows = [];
+  for (const s of sortedSamples(samples.filter((x) => sampleMatches(x, f)), f.sort)) {
+    const row = sampleRow(s, audit, accordion);
+    tbody.append(row.tr);
+    rows.push(row);
+  }
+  if (audit) for (const row of rows) row.expand();  // after insertion: tr.after needs a parent
+  return rows.length;
+}
+
+function labeled(text, control) {
+  const wrap = el("label", "", text + " ");
+  wrap.append(control);
+  return wrap;
+}
+
+function controlsBar(f, apply) {
+  const bar = el("div", "controls");
+
+  const stateSel = el("select");
+  for (const v of ["all", "scored", "provider_error", "judge_error"]) {
+    const opt = el("option", "", v);
+    opt.value = v;
+    opt.selected = v === f.state;
+    stateSel.append(opt);
+  }
+  stateSel.addEventListener("change", () => { f.state = stateSel.value; apply(); });
+
+  const zeroBox = el("input");
+  zeroBox.type = "checkbox";
+  zeroBox.checked = f.zero;
+  zeroBox.addEventListener("change", () => { f.zero = zeroBox.checked; apply(); });
+  const zeroLabel = el("label");
+  zeroLabel.append(zeroBox, document.createTextNode(" failures (score = 0)"));
+
+  const sortSel = el("select");
+  for (const v of ["file", "id", "score"]) {
+    const opt = el("option", "", v);
+    opt.value = v;
+    opt.selected = v === f.sort;
+    sortSel.append(opt);
+  }
+  sortSel.addEventListener("change", () => { f.sort = sortSel.value; apply(); });
+
+  const search = el("input");
+  search.type = "search";
+  search.placeholder = "search response, detail, dataset fields";
+  search.value = f.q;
+  search.addEventListener("input", () => { f.q = search.value; apply(); });
+
+  bar.append(labeled("state", stateSel), zeroLabel, labeled("sort", sortSel), search);
+  return bar;
 }
 
 function runHeader(data) {
@@ -209,17 +344,29 @@ function runHeader(data) {
   return wrap;
 }
 
-async function showRun(view, dir) {
-  // Fetched once per view; expansion works from memory (no refetch per click).
-  const data = await fetchJSON("/api/runs/" + encodeURIComponent(dir));
+async function showRun(view, dir, f) {
+  if (runCache.dir !== dir) {
+    runCache = { dir, data: await fetchJSON("/api/runs/" + encodeURIComponent(dir)) };
+  }
+  const data = runCache.data;
   view.append(runHeader(data));
   const table = tableWithHead(
     ["id", "state", "score", "cached", "tok in", "tok out"],
     ["score", "cached", "tok in", "tok out"]);
   const tbody = table.appendChild(el("tbody"));
-  for (const s of data.samples) tbody.append(sampleRow(s, tbody));
+
+  // Filter changes rewrite the URL via replaceState: the link stays shareable
+  // and reload-safe without a history entry per keystroke, and without a
+  // hashchange rebuild (which would drop focus from the search box).
+  // Real navigation (list <-> run, back/forward) still flows through hashchange.
+  const apply = () => {
+    history.replaceState(null, "", filtersToHash(dir, f));
+    const shown = renderSamples(tbody, data.samples, f);
+    setStatus(shown + " of " + data.samples.length + " sample(s) shown in " + data.dir);
+  };
+  view.append(controlsBar(f, apply));
   view.append(table);
-  setStatus(data.samples.length + " sample(s) in " + data.dir);
+  apply();
 }
 
 // --- hash router ----------------------------------------------------------------------
@@ -230,7 +377,7 @@ async function route() {
   setStatus("loading…");
   const match = location.hash.match(/^#\/run\/([^/?]+)/);
   try {
-    if (match) await showRun(view, decodeURIComponent(match[1]));
+    if (match) await showRun(view, decodeURIComponent(match[1]), parseFilters(location.hash));
     else await showList(view);
   } catch (e) {
     setStatus(String(e), true);
