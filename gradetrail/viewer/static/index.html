@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gradetrail</title>
+<style>
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 1.5rem 2rem;
+         color: #111; background: #fff; }
+  h1 { font-size: 1.2rem; margin: 0 0 1rem; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 4px 10px; border-bottom: 1px solid #ddd;
+           font-size: 0.85rem; white-space: nowrap; }
+  th { border-bottom: 2px solid #888; font-weight: 600; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.warn { color: #8a5300; }
+  td.err { color: #b00020; }
+  #status { font-size: 0.85rem; color: #555; }
+</style>
+</head>
+<body>
+<h1>gradetrail runs</h1>
+<p id="status">loading&hellip;</p>
+<table id="runs" hidden>
+  <thead>
+    <tr>
+      <th>name</th><th>model</th><th>created</th>
+      <th class="num">samples</th><th class="num">scored</th>
+      <th class="num">errors</th><th class="num">mean</th>
+      <th class="num">cost&nbsp;$</th><th class="num">wall&nbsp;s</th>
+      <th>notes</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+<script>
+"use strict";
+// All model/dataset-derived values go through td()'s textContent -- never innerHTML.
+function td(text, cls) {
+  const el = document.createElement("td");
+  el.textContent = text === null || text === undefined ? "" : String(text);
+  if (cls) el.className = cls;
+  return el;
+}
+
+function notes(run) {
+  const out = [];
+  if (run.dataset_matches === false) out.push("dataset changed since this run");
+  if (run.dataset_matches === null) out.push("dataset unverifiable (pre-0.2 run?)");
+  if (run.parse_errors > 0) out.push(run.parse_errors + " unreadable result line(s)");
+  return out.join("; ");
+}
+
+function renderRow(run) {
+  const tr = document.createElement("tr");
+  if (run.error) {  // key omitted when healthy, per the HTTP contract
+    tr.append(td(run.dir), td("", ""), td("", ""), td("", "num"), td("", "num"),
+              td("", "num"), td("", "num"), td("", "num"), td("", "num"),
+              td("manifest error: " + run.error, "err"));
+    return tr;
+  }
+  const c = run.counts || {};
+  const errors = (c.provider_error || 0) + (c.judge_error || 0);
+  const mean = run.mean_score === null ? "n/a" : Number(run.mean_score).toFixed(4);
+  tr.append(
+    td(run.name),
+    td(run.model),
+    td((run.created_at || "").slice(0, 19).replace("T", " ")),
+    td(run.n_samples, "num"),
+    td(c.scored, "num"),
+    td(errors, "num"),
+    td(mean, "num"),
+    td(run.total_cost_usd === null ? "unknown" : run.total_cost_usd, "num"),
+    td(run.wall_time_s === null ? "" : Number(run.wall_time_s).toFixed(1), "num"),
+    td(notes(run), notes(run) ? "warn" : "")
+  );
+  return tr;
+}
+
+async function main() {
+  const status = document.getElementById("status");
+  let runs;
+  try {
+    const resp = await fetch("/api/runs");
+    runs = await resp.json();
+  } catch (e) {
+    status.textContent = "failed to load /api/runs: " + e;
+    return;
+  }
+  const table = document.getElementById("runs");
+  const tbody = table.querySelector("tbody");
+  for (const run of runs) tbody.append(renderRow(run));
+  status.textContent = runs.length + " run(s)";
+  table.hidden = false;
+}
+
+main();
+</script>
+</body>
+</html>
