@@ -82,7 +82,7 @@ Three views in one page. **Requirement: every view and filter state is URL-addre
 
 2. **Single run**: summary header (the manifest numbers), then a sample table: id, state, score, cached, tokens. Controls: filter by state (all / scored / provider_error / judge_error), filter "score = 0" (the audit button), sort by id or score, free-text search over response text, detail, and dataset fields. Click a row to expand the transcript panel inline: every dataset field, the full response_text, detail, token counts. The audit workflow, "show me every zero-score with its question and response", must be at most two clicks from landing.
 
-3. **Diff**: two runs side by side, joined on sample_id. Header shows both manifests' identity hashes and whether they match. Table of samples where the two runs disagree (score changed, state changed), with both responses viewable in the expand panel. A toggle to show all samples, not just disagreements. Missing-on-one-side samples are shown, not dropped.
+3. **Diff**: two runs side by side, joined on sample_id. Header shows both manifests' identity hashes and whether they match. Table of samples where the two runs disagree (score changed, state changed), with both responses viewable in the expand panel. A toggle to show all samples, not just disagreements. Missing-on-one-side samples are shown, not dropped — a sample present in only one run counts as a disagreement. The diff is computed entirely client-side from the two runs' existing `GET /api/runs/{dir}` payloads, fetched once each; there is no server-side diff endpoint, and adding one would need this doc changed first.
 
 Design tone: plain, fast, readable. System font stack, no animation, tables not cards. It should look like a tool, not a product.
 
