@@ -24,7 +24,7 @@
 <table id="runs" hidden>
   <thead>
     <tr>
-      <th>name</th><th>model</th><th>created</th>
+      <th>name</th><th>hash</th><th>model</th><th>created</th>
       <th class="num">samples</th><th class="num">scored</th>
       <th class="num">errors</th><th class="num">mean</th>
       <th class="num">cost&nbsp;$</th><th class="num">wall&nbsp;s</th>
@@ -54,23 +54,26 @@ function notes(run) {
 function renderRow(run) {
   const tr = document.createElement("tr");
   if (run.error) {  // key omitted when healthy, per the HTTP contract
-    tr.append(td(run.dir), td("", ""), td("", ""), td("", "num"), td("", "num"),
-              td("", "num"), td("", "num"), td("", "num"), td("", "num"),
-              td("manifest error: " + run.error, "err"));
+    const msg = td("manifest error: " + run.error, "err");
+    msg.colSpan = 10;
+    tr.append(td(run.dir), msg);
     return tr;
   }
   const c = run.counts || {};
   const errors = (c.provider_error || 0) + (c.judge_error || 0);
   const mean = run.mean_score === null ? "n/a" : Number(run.mean_score).toFixed(4);
+  // One cost format, matching the CLI summary ($0.9834, $0.0000) -- no raw pass-through.
+  const cost = run.total_cost_usd === null ? "unknown" : "$" + Number(run.total_cost_usd).toFixed(4);
   tr.append(
     td(run.name),
+    td((run.identity_hash || "").slice(0, 8)),
     td(run.model),
     td((run.created_at || "").slice(0, 19).replace("T", " ")),
     td(run.n_samples, "num"),
     td(c.scored, "num"),
     td(errors, "num"),
     td(mean, "num"),
-    td(run.total_cost_usd === null ? "unknown" : run.total_cost_usd, "num"),
+    td(cost, "num"),
     td(run.wall_time_s === null ? "" : Number(run.wall_time_s).toFixed(1), "num"),
     td(notes(run), notes(run) ? "warn" : "")
   );

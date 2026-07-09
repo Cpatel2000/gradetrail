@@ -78,7 +78,7 @@ Three endpoints, all GET, all JSON except the page itself:
 
 Three views in one page. **Requirement: every view and filter state is URL-addressable** (a researcher can send a colleague a link to "run X, failures only"); the mechanism is client-side hash routing, e.g. `#/run/<dir>?state=scored&zero=1`. Target scale: interactive up to roughly 10,000 samples per run, rendered directly without pagination machinery.
 
-1. **Run list** (landing): table of runs from `/api/runs`: name, model, date, samples, state counts, mean score, cost, wall time, and a warning icon when `dataset_matches` is false. Click a row to open the run. Checkboxes to select exactly two runs enable a "Diff" button.
+1. **Run list** (landing): table of runs from `/api/runs`: name, identity hash (first 8 chars — identical-name runs must be distinguishable at a glance), model, date, samples, state counts, mean score, cost, wall time, and a warning icon when `dataset_matches` is false. Cost renders in the CLI summary's format — `$0.9834`, `$0.0000` for a true zero — and `unknown` when null; one format, no raw pass-through. Click a row to open the run. Checkboxes to select exactly two runs enable a "Diff" button.
 
 2. **Single run**: summary header (the manifest numbers), then a sample table: id, state, score, cached, tokens. Controls: filter by state (all / scored / provider_error / judge_error), filter "score = 0" (the audit button), sort by id or score, free-text search over response text and dataset fields. Click a row to expand the transcript panel inline: every dataset field, the full response_text, detail, token counts. The audit workflow, "show me every zero-score with its question and response", must be at most two clicks from landing.
 
